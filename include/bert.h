@@ -1,6 +1,8 @@
 #pragma once
+#include "ggml-alloc.h"
 #include "ggml-backend.h"
 #include "ggml.h"
+#include "tokenizer.h"
 
 #include <cmath>
 #include <stdbool.h>
@@ -9,6 +11,97 @@
 #include <string>
 #include <vector>
 
+#define KEY_FTYPE "general.file_type"
+#define KEY_NAME "general.name"
+#define KEY_DESCRIPTION "general.description"
+
 namespace embeddings {
-class Bert {};
+class EncoderBlock {
+public:
+  void Forward();
+
+  // attention
+  struct ggml_tensor *q_w;
+  struct ggml_tensor *q_b;
+  struct ggml_tensor *k_w;
+  struct ggml_tensor *k_b;
+  struct ggml_tensor *v_w;
+  struct ggml_tensor *v_b;
+
+  struct ggml_tensor *o_w;
+  struct ggml_tensor *o_b;
+
+  struct ggml_tensor *ln_att_w;
+  struct ggml_tensor *ln_att_b;
+
+  // ff
+  struct ggml_tensor *ff_i_w;
+  struct ggml_tensor *ff_i_b;
+
+  struct ggml_tensor *ff_o_w;
+  struct ggml_tensor *ff_o_b;
+
+  struct ggml_tensor *ln_out_w;
+  struct ggml_tensor *ln_out_b;
+};
+
+struct BertEncoderConfig {
+  int32_t n_vocab;
+  int32_t n_max_tokens;
+  int32_t n_embd;
+  int32_t n_intermediate;
+  int32_t n_head;
+  int32_t n_layer;
+  float_t layer_norm_eps;
+};
+
+class BackendContext {
+public:
+  // ggml context for weights
+  struct ggml_context *ctx_data = NULL;
+
+  // memory buffers to evaluate the model
+  ggml_backend_t backend = NULL;
+  ggml_backend_buffer_t weights_buffer = NULL;
+
+  // load tokens into here, to compute
+  struct ggml_context *compute_ctx = NULL;
+  ggml_backend_buffer_t compute_buffer = NULL;
+
+  // the compute graph for each forward process
+  struct ggml_context *compute_graph_ctx = NULL;
+  ggml_gallocr_t compute_allocr = NULL;
+};
+
+class BertEncoder {
+public:
+  BertEncoder(const std::string &);
+  std::vector<float> Forward(const tokens &);
+  std::vector<float> BatchForward(const tokens_batch &);
+
+private:
+  struct ggml_cgraph *BuildGraph(tokens_batch batch, bool normalize);
+  void Clear();
+
+  BertEncoderConfig hparams;
+  BackendContext ctx;
+  struct ggml_tensor *word_embeddings;
+  struct ggml_tensor *token_type_embeddings;
+  struct ggml_tensor *position_embeddings;
+  struct ggml_tensor *ln_e_w;
+  struct ggml_tensor *ln_e_b;
+
+  std::vector<EncoderBlock> layers;
+};
+
+class Embedding {
+public:
+  Embedding(const std::string &hf_token_json, const std::string &gguf_model);
+  std::vector<float> Encode(const std::string &);
+  std::vector<float> BatchEncode(const std::vector<std::string> &);
+
+private:
+  Tokenizer *tok;
+  BertEncoder *model;
+};
 } // namespace embeddings

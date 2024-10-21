@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(potasms_cpp)
+project(embedding)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -10,8 +10,16 @@ add_subdirectory(tokenizers-cpp)
 include_directories(tokenizers-cpp/include)
 
 
-include_directories(include)
-add_executable(potasms_cpp 
-    main.cpp src/bert.cpp src/tokenizer.cpp src/utils.cpp
+set(EMBEDDING_SOURCES 
+    src/bert.cpp
+    src/tokenizer.cpp
+    src/utils.cpp
 )
-target_link_libraries(potasms_cpp PRIVATE ggml tokenizers_cpp)
+
+include_directories(include)
+add_executable(embedding main.cpp ${EMBEDDING_SOURCES})
+add_executable(test_tokenizer tests/test_tokenizer.cpp ${EMBEDDING_SOURCES})
+add_executable(test_embedding tests/test_embedding.cpp ${EMBEDDING_SOURCES})
+target_link_libraries(embedding PRIVATE ggml tokenizers_cpp)
+target_link_libraries(test_tokenizer PRIVATE ggml tokenizers_cpp)
+target_link_libraries(test_embedding PRIVATE ggml tokenizers_cpp)

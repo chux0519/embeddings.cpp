@@ -11,7 +11,7 @@ void TestTokenizer(Tokenizer tok, bool print_vocab = false,
                    bool check_id_back = true) {
   // Check #1. Encode and Decode
   //   std::string prompt = "What is the  capital of Canada?";
-  std::string prompt = "今天天气怎么样？";
+  std::string prompt = "如何更换花呗绑定银行卡";
   std::vector<int> ids = tok.Encode(prompt);
   std::string decoded_prompt = tok.Decode(ids);
   print_encode_result(ids);
@@ -42,10 +42,7 @@ void HuggingFaceTokenizerExample() {
 
   auto start = std::chrono::high_resolution_clock::now();
 
-  const std::string tokenizer_path =
-      "/home/yongsheng/.cache/huggingface/hub/"
-      "models--shibing624--text2vec-base-multilingual/snapshots/"
-      "6633dc49e554de7105458f8f2e96445c6598e9d1/tokenizer.json";
+  const std::string tokenizer_path = "models/tokenizer.json";
 
   auto tok = Tokenizer(tokenizer_path);
 
