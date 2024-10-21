@@ -15,6 +15,7 @@ void TestTokenizer(Tokenizer tok, bool print_vocab = false,
   std::vector<int> ids = tok.Encode(prompt);
   std::string decoded_prompt = tok.Decode(ids);
   print_encode_result(ids);
+  std::cout << "prompt=\"" << prompt << "\"" << std::endl;
   std::cout << "decode=\"" << decoded_prompt << "\"" << std::endl;
   assert(decoded_prompt == prompt);
 

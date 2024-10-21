@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 add_subdirectory(ggml)
 include_directories(ggml/include)
 
-add_subdirectory(tokenizers-cpp)
-include_directories(tokenizers-cpp/include)
+add_subdirectory(hf_tokenizers)
+include_directories(hf_tokenizers/include)
 
 
 set(EMBEDDING_SOURCES 

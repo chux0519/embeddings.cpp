@@ -1,3 +1,6 @@
 [submodule "ggml"]
 	path = ggml
 	url = https://github.com/ggerganov/ggml.git
+[submodule "hf_tokenizers"]
+	path = hf_tokenizers
+	url = git@github.com:chux0519/hf_tokenizers.git
