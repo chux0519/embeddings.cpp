@@ -1,25 +1,46 @@
 #include "tokenizer.h"
 #include "utils.h"
+#include <cstddef>
+#include <iostream>
 
 namespace embeddings {
 Tokenizer::Tokenizer(const std::string &path) {
   auto blob = load_bytes_from_file(path);
-  auto tok_ = tokenizers::Tokenizer::FromBlobJSON(blob);
+  auto tok_ = tokenizers::HFTokenizer::FromBlobJSON(blob);
   tok = tok_.release();
 }
 
-tokens Tokenizer::Encode(const std::string &text) {
-  return tok->Encode(text, true);
+encoding Tokenizer::Encode(const std::string &text) {
+  std::vector<std::string> texts = {text};
+  return EncodeBatch(texts)[0];
 }
 
-tokens_batch Tokenizer::EncodeBatch(const std::vector<std::string> &texts) {
-  return tok->EncodeBatch(texts, true);
+std::vector<encoding>
+Tokenizer::EncodeBatch(const std::vector<std::string> &texts) {
+  auto results = tok->EncodeBatch(texts, true);
+  int max_size = 0;
+  for (auto enc : results) {
+    for (size_t pos = 0; pos < enc.attention_mask.size(); pos++) {
+      if (enc.attention_mask[pos] == 0 && pos > max_size) {
+        max_size = pos;
+        break;
+      }
+    }
+  }
+  if (max_size > 1) {
+    max_size = max_size - 1;
+  }
+  for (size_t i = 0; i < results.size(); i++) {
+    results[i].attention_mask.resize(max_size);
+    results[i].ids.resize(max_size);
+  }
+  return results;
 }
 
 std::string Tokenizer::Decode(const tokens &ids) {
   return tok->Decode(ids, true);
 }
 
-tokenizers::Tokenizer *Tokenizer::GetFastTokenizer() { return tok; }
+tokenizers::HFTokenizer *Tokenizer::GetFastTokenizer() { return tok; }
 
 } // namespace embeddings

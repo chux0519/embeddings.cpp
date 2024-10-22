@@ -3,21 +3,29 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstddef>
 #include <iostream>
+#include <vector>
 
 using namespace embeddings;
 
 void TestTokenizer(Tokenizer tok, bool print_vocab = false,
                    bool check_id_back = true) {
   // Check #1. Encode and Decode
-  //   std::string prompt = "What is the  capital of Canada?";
-  std::string prompt = "如何更换花呗绑定银行卡";
-  std::vector<int> ids = tok.Encode(prompt);
-  std::string decoded_prompt = tok.Decode(ids);
-  print_encode_result(ids);
-  std::cout << "prompt=\"" << prompt << "\"" << std::endl;
-  std::cout << "decode=\"" << decoded_prompt << "\"" << std::endl;
-  assert(decoded_prompt == prompt);
+  std::vector<std::string> prompts = {"如何更换花呗绑定银行卡",
+                                      "What is the capital of Canada?"};
+  auto res = tok.EncodeBatch(prompts);
+  for (size_t i = 0; i < res.size(); ++i) {
+    auto encoding = res[i];
+    std::string decoded_prompt = tok.Decode(encoding.ids);
+    std::cout << "prompt=\"" << prompts[i] << "\"" << std::endl;
+    std::cout << "ids: ";
+    print_encode_result(encoding.ids);
+    std::cout << "attention mask: ";
+    print_encode_result(encoding.attention_mask);
+    std::cout << "decode=\"" << decoded_prompt << "\"" << std::endl;
+    assert(decoded_prompt == prompts[i]);
+  }
 
   // Check #2. IdToToken and TokenToId
   std::vector<int32_t> ids_to_test = {0, 1, 2, 3, 4, 33, 34, 130, 131, 250001};

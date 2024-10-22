@@ -22,7 +22,7 @@ std::string load_bytes_from_file(const std::string &path) {
 }
 
 void print_encode_result(const std::vector<int> &ids) {
-  std::cout << "tokens=[";
+  std::cout << "[";
   for (size_t i = 0; i < ids.size(); ++i) {
     if (i != 0)
       std::cout << ", ";
@@ -32,7 +32,7 @@ void print_encode_result(const std::vector<int> &ids) {
 }
 
 void print_tensors(const std::vector<float> &tensors) {
-  std::cout << "tokens=[";
+  std::cout << "[";
   for (size_t i = 0; i < tensors.size(); ++i) {
     if (i != 0)
       std::cout << ", ";

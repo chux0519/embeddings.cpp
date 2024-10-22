@@ -4,23 +4,25 @@
 #include <string>
 #include <vector>
 
-#include "tokenizers_cpp.h"
+#include "huggingface_tokenizer.h"
 
 typedef std::vector<int32_t> tokens;
 typedef std::vector<tokens> tokens_batch;
+
+typedef tokenizers::HFEncoding encoding;
 
 namespace embeddings {
 class Tokenizer {
 public:
   Tokenizer(const std::string &path);
 
-  tokens Encode(const std::string &);
-  tokens_batch EncodeBatch(const std::vector<std::string> &);
+  encoding Encode(const std::string &);
+  std::vector<encoding> EncodeBatch(const std::vector<std::string> &);
   std::string Decode(const tokens &);
 
-  tokenizers::Tokenizer *GetFastTokenizer();
+  tokenizers::HFTokenizer *GetFastTokenizer();
 
 private:
-  tokenizers::Tokenizer *tok;
+  tokenizers::HFTokenizer *tok;
 };
 } // namespace embeddings
