@@ -76,11 +76,12 @@ public:
 class BertEncoder {
 public:
   BertEncoder(const std::string &);
-  std::vector<float> Forward(const tokens &);
-  std::vector<float> BatchForward(const tokens_batch &);
+  std::vector<float> Forward(const encoding &);
+  std::vector<std::vector<float>> BatchForward(const std::vector<encoding> &);
 
 private:
-  struct ggml_cgraph *BuildGraph(tokens_batch batch, bool normalize);
+  struct ggml_cgraph *BuildGraph(const std::vector<encoding> &batch,
+                                 bool normalize);
   void Clear();
 
   BertEncoderConfig hparams;
@@ -98,7 +99,7 @@ class Embedding {
 public:
   Embedding(const std::string &hf_token_json, const std::string &gguf_model);
   std::vector<float> Encode(const std::string &);
-  std::vector<float> BatchEncode(const std::vector<std::string> &);
+  std::vector<std::vector<float>> BatchEncode(const std::vector<std::string> &);
 
 private:
   Tokenizer *tok;

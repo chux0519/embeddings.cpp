@@ -216,13 +216,13 @@ BertEncoder::BertEncoder(const std::string &gguf_model) {
   gguf_free(ctx_gguf);
 }
 
-std::vector<float> BertEncoder::Forward(const tokens &toks) {
-  tokens_batch batch;
-  batch.push_back(toks);
-  return BatchForward(batch);
+std::vector<float> BertEncoder::Forward(const encoding &enc) {
+  std::vector<encoding> batch = {enc};
+  return BatchForward(batch)[0];
 }
 
-std::vector<float> BertEncoder::BatchForward(const tokens_batch &batch) {
+std::vector<std::vector<float>>
+BertEncoder::BatchForward(const std::vector<encoding> &batch) {
   Clear();
   // build compute graph
   auto graph = BuildGraph(batch, true);
@@ -244,7 +244,7 @@ std::vector<float> BertEncoder::BatchForward(const tokens_batch &batch) {
   }
   ggml_backend_graph_compute(ctx.backend, graph);
 
-  std::vector<float> res;
+  std::vector<std::vector<float>> ret;
 
   // in this example, output tensor is always the last tensor in the graph
   auto result = ggml_graph_node(graph, -1);
@@ -252,23 +252,21 @@ std::vector<float> BertEncoder::BatchForward(const tokens_batch &batch) {
   // because the tensor data is stored in device buffer, we need to copy it back
   // to RAM
   ggml_backend_tensor_get(result, result_data, 0, ggml_nbytes(result));
-  printf("mul mat (%d x %d) (transposed result):\n[", (int)result->ne[0],
-         (int)result->ne[1]);
+  // printf("mul mat (%d x %d) (transposed result):\n", (int)result->ne[0],
+  //        (int)result->ne[1]);
   for (int j = 0; j < result->ne[1] /* rows */; j++) {
-    if (j > 0) {
-      printf("\n");
-    }
+    std::vector<float> emb;
 
     for (int i = 0; i < result->ne[0] /* cols */; i++) {
-      printf(" %.2f", result_data[j * result->ne[0] + i]);
-      res.push_back(result_data[j * result->ne[0] + i]);
+
+      emb.push_back(result_data[j * result->ne[0] + i]);
     }
+    ret.push_back(emb);
   }
-  printf(" ]\n");
 
   Clear();
 
-  return res;
+  return ret;
 }
 
 void BertEncoder::Clear() {
@@ -290,7 +288,7 @@ void BertEncoder::Clear() {
   }
 }
 
-struct ggml_cgraph *BertEncoder::BuildGraph(tokens_batch batch,
+struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<encoding> &batch,
                                             bool normalize) {
   // extract model params
   const int n_embd = hparams.n_embd;
@@ -300,8 +298,8 @@ struct ggml_cgraph *BertEncoder::BuildGraph(tokens_batch batch,
   const float layer_norm_eps = hparams.layer_norm_eps;
   const int d_head = n_embd / n_head; // E = D * H
 
-  int n_batch_size = batch.size();
-  int cur_batch_size = batch[0].size();
+  int n_batch_size = batch.size();          // B
+  int cur_batch_size = batch[0].ids.size(); // L
 
   size_t ctx_size =
       GGML_DEFAULT_GRAPH_SIZE * ggml_tensor_overhead() + ggml_graph_overhead();
@@ -342,14 +340,15 @@ struct ggml_cgraph *BertEncoder::BuildGraph(tokens_batch batch,
 
   for (int ba = 0; ba < n_batch_size; ba++) {
     for (int i = 0; i < cur_batch_size; i++) {
-      int cur_len = batch[ba].size();
+      int cur_len = batch[ba].ids.size();
       if (cur_len != cur_batch_size) {
         throw "batch should be padded before building";
       }
 
-      token_layer_data[ba * cur_batch_size + i] = batch[ba][i];
-      pad_mask_data[ba * cur_batch_size + i] = 1.0f;
-      sum_data[ba * cur_batch_size + i] = 1 / (float)cur_len;
+      token_layer_data[ba * cur_batch_size + i] = batch[ba].ids[i];
+      pad_mask_data[ba * cur_batch_size + i] =
+          static_cast<float>(batch[ba].attention_mask[i]);
+      sum_data[ba * cur_batch_size + i] = 1 / static_cast<float>(cur_len);
 
       token_types_data[ba * cur_batch_size + i] = 0;
       pos_data[ba * cur_batch_size + i] = i;
@@ -527,16 +526,13 @@ Embedding::Embedding(const std::string &hf_token_json,
 
 std::vector<float> Embedding::Encode(const std::string &text) {
   std::vector<std::string> batch = {text};
-  return BatchEncode(batch);
+  return BatchEncode(batch)[0];
 }
 
-std::vector<float>
+std::vector<std::vector<float>>
 Embedding::BatchEncode(const std::vector<std::string> &batch) {
-  // auto ids_batch = tok->EncodeBatch(batch);
-  // print_encode_result(ids_batch[0]);
-  tokens ids = {0, 6, 5733, 185548, 2603, 244775, 136660, 3779, 14565, 4624, 2};
-  tokens_batch ids_batch = {ids};
-  auto embeddings = model->BatchForward(ids_batch);
+  auto encodings = tok->EncodeBatch(batch);
+  auto embeddings = model->BatchForward(encodings);
   return embeddings;
 }
 

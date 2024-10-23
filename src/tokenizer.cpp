@@ -1,6 +1,7 @@
 #include "tokenizer.h"
 #include "utils.h"
 #include <cstddef>
+#include <cstdio>
 #include <iostream>
 
 namespace embeddings {
@@ -21,15 +22,14 @@ Tokenizer::EncodeBatch(const std::vector<std::string> &texts) {
   int max_size = 0;
   for (auto enc : results) {
     for (size_t pos = 0; pos < enc.attention_mask.size(); pos++) {
-      if (enc.attention_mask[pos] == 0 && pos > max_size) {
-        max_size = pos;
+      if (enc.attention_mask[pos] == 0) {
+        if (pos > max_size)
+          max_size = pos;
         break;
       }
     }
   }
-  if (max_size > 1) {
-    max_size = max_size - 1;
-  }
+
   for (size_t i = 0; i < results.size(); i++) {
     results[i].attention_mask.resize(max_size);
     results[i].ids.resize(max_size);
