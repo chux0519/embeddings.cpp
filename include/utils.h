@@ -2,6 +2,7 @@
 
 #include "ggml.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -20,4 +21,7 @@ std::string get_str(const gguf_context *ctx, const std::string &key,
 struct ggml_tensor *get_tensor(struct ggml_context *ctx,
                                const std::string &name);
 std::string get_ftype(int ftype);
+
+std::string to_lowercase(const std::string &str);
+
 } // namespace embeddings

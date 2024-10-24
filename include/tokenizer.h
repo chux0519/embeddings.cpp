@@ -16,9 +16,10 @@ class Tokenizer {
 public:
   Tokenizer(const std::string &path);
 
-  encoding Encode(const std::string &);
-  std::vector<encoding> EncodeBatch(const std::vector<std::string> &);
-  std::string Decode(const tokens &);
+  encoding Encode(const std::string &, bool add_special_tokens = true);
+  std::vector<encoding> EncodeBatch(const std::vector<std::string> &,
+                                    bool add_special_tokens = true);
+  std::string Decode(const tokens &, bool skip_special_tokens = true);
 
   tokenizers::HFTokenizer *GetFastTokenizer();
 
