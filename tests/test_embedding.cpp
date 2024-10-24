@@ -23,4 +23,6 @@ int main() {
 
   TestEmbedding("models/text2vec-base-multilingual.tokenizer.json",
                 "models/text2vec-base-multilingual.fp16.gguf");
+
+  TestEmbedding("models/bge-m3.tokenizer.json", "models/bge-m3.fp16.gguf");
 }

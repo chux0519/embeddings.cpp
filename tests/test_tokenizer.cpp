@@ -49,5 +49,6 @@ void TestTokenizer(const std::string &tokenizer_file) {
 int main() {
   TestTokenizer("models/bge-base-zh-v1.5.tokenizer.json");
   TestTokenizer("models/text2vec-base-multilingual.tokenizer.json");
+  TestTokenizer("models/bge-m3.tokenizer.json");
   return 0;
 }
