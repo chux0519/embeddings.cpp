@@ -3,7 +3,21 @@ embeddings.cpp Python bindings
 """
 from __future__ import annotations
 import typing
-__all__ = ['Encoding', 'Tokenizer', 'Tokens', 'TokensBatch']
+__all__ = ['Embedding', 'Encoding', 'Tokenizer', 'Tokens', 'TokensBatch']
+class Embedding:
+    @staticmethod
+    def _pybind11_conduit_v1_(*args, **kwargs):
+        ...
+    def __init__(self, hf_token_json: str, gguf_model: str) -> None:
+        ...
+    def batch_encode(self, texts: list[str], normalize: bool = True) -> list[list[float]]:
+        """
+        Encodes a batch of strings into a list of float vectors.
+        """
+    def encode(self, text: str, normalize: bool = True) -> list[float]:
+        """
+        Encodes a single string into a vector of floats.
+        """
 class Encoding:
     @staticmethod
     def _pybind11_conduit_v1_(*args, **kwargs):

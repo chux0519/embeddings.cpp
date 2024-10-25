@@ -216,16 +216,16 @@ BertEncoder::BertEncoder(const std::string &gguf_model) {
   gguf_free(ctx_gguf);
 }
 
-std::vector<float> BertEncoder::Forward(const encoding &enc) {
+std::vector<float> BertEncoder::Forward(const encoding &enc, bool normalize) {
   std::vector<encoding> batch = {enc};
   return BatchForward(batch)[0];
 }
 
 std::vector<std::vector<float>>
-BertEncoder::BatchForward(const std::vector<encoding> &batch) {
+BertEncoder::BatchForward(const std::vector<encoding> &batch, bool normalize) {
   Clear();
   // build compute graph
-  auto graph = BuildGraph(batch, true);
+  auto graph = BuildGraph(batch, normalize);
 
   // alloc graph
   ctx.compute_allocr =
@@ -524,15 +524,15 @@ Embedding::Embedding(const std::string &hf_token_json,
   model = new BertEncoder(gguf_model);
 }
 
-std::vector<float> Embedding::Encode(const std::string &text) {
+std::vector<float> Embedding::Encode(const std::string &text, bool normalize) {
   std::vector<std::string> batch = {text};
-  return BatchEncode(batch)[0];
+  return BatchEncode(batch, normalize)[0];
 }
 
 std::vector<std::vector<float>>
-Embedding::BatchEncode(const std::vector<std::string> &batch) {
+Embedding::BatchEncode(const std::vector<std::string> &batch, bool normalize) {
   auto encodings = tok->EncodeBatch(batch);
-  auto embeddings = model->BatchForward(encodings);
+  auto embeddings = model->BatchForward(encodings, normalize);
   return embeddings;
 }
 
