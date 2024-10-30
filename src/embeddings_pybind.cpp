@@ -1,6 +1,5 @@
 #include "bert.h"
 #include "tokenizer.h"
-#include "utils.h"
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -13,11 +12,10 @@ using namespace pybind11::literals;
 
 PYBIND11_MODULE(_C, m) {
   m.doc() = "embeddings.cpp Python bindings";
-  py::class_<tokenizers::HFEncoding>(m, "Encoding")
+  py::class_<Encoding>(m, "Encoding")
       .def(py::init<>())
-      .def_readwrite("ids", &tokenizers::HFEncoding::ids,
-                     "Token IDs of the encoding.")
-      .def_readwrite("attention_mask", &tokenizers::HFEncoding::attention_mask,
+      .def_readwrite("ids", &Encoding::ids, "Token IDs of the encoding.")
+      .def_readwrite("attention_mask", &Encoding::attention_mask,
                      "Attention mask for the encoding.");
 
   py::bind_vector<tokens>(m, "Tokens");
@@ -41,10 +39,10 @@ PYBIND11_MODULE(_C, m) {
            "hf_token_json"_a, "gguf_model"_a)
       .def("encode", &Embedding::Encode,
            "Encodes a single string into a vector of floats.", "text"_a,
-           "normalize"_a = true)
+           "normalize"_a = true, "pooling_method"_a = 0)
       .def("batch_encode", &Embedding::BatchEncode,
            "Encodes a batch of strings into a list of float vectors.",
-           "texts"_a, "normalize"_a = true);
+           "texts"_a, "normalize"_a = true, "pooling_method"_a = 0);
 }
 
 } // namespace embeddings

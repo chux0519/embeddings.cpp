@@ -10,11 +10,11 @@ class Embedding:
         ...
     def __init__(self, hf_token_json: str, gguf_model: str) -> None:
         ...
-    def batch_encode(self, texts: list[str], normalize: bool = True) -> list[list[float]]:
+    def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: int = 0) -> list[list[float]]:
         """
         Encodes a batch of strings into a list of float vectors.
         """
-    def encode(self, text: str, normalize: bool = True) -> list[float]:
+    def encode(self, text: str, normalize: bool = True, pooling_method: int = 0) -> list[float]:
         """
         Encodes a single string into a vector of floats.
         """

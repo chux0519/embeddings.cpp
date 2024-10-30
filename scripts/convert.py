@@ -18,7 +18,7 @@ def convert_hf(repo_id, output_path, float_type='f16'):
     tokenizer = AutoTokenizer.from_pretrained(repo_id)
     tokenizer_json = os.path.join(os.path.dirname(output_path), os.path.basename(repo_id) + ".tokenizer.json")
     # tokenizer.save_pretrained(tokenizer_json)
-    tokenizer._tokenizer.save(tokenizer_json)
+    tokenizer._tokenizer.save(tokenizer_json, False)
 
     model = AutoModel.from_pretrained(repo_id)
     config = model.config
@@ -45,11 +45,11 @@ def convert_hf(repo_id, output_path, float_type='f16'):
 
 
     # start to write GGUF file
-    gguf_writer = GGUFWriter(output_path, 'bert')
+    gguf_writer = GGUFWriter(output_path, model.config.architectures[0])
 
     # write metadata
     gguf_writer.add_name(repo_id)
-    gguf_writer.add_description('GGML BERT model')
+    gguf_writer.add_description('gguf model for embeddings.cpp')
     gguf_writer.add_file_type(qtype)
 
     # write model params

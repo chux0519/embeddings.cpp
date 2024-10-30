@@ -1,4 +1,5 @@
 #include "bert.h"
+#include "ggml.h"
 #include "tokenizer.h"
 #include "utils.h"
 
@@ -35,10 +36,12 @@ BertEncoder::BertEncoder(const std::string &gguf_model) {
   const std::string ftype_str = get_ftype(ftype);
   const std::string description = get_str(ctx_gguf, KEY_DESCRIPTION);
   const std::string name = get_str(ctx_gguf, KEY_NAME);
+  arch = get_str(ctx_gguf, KEY_ARCHITECTURE);
 
   fprintf(stderr, "\n");
   fprintf(stderr, "%s: GGUF\n", __func__);
   fprintf(stderr, "%s: model name:   %s\n", __func__, name.c_str());
+  fprintf(stderr, "%s: architecture:   %s\n", __func__, arch.c_str());
   fprintf(stderr, "%s: description:  %s\n", __func__, description.c_str());
   fprintf(stderr, "%s: GGUF version: %d\n", __func__, version);
   fprintf(stderr, "%s: alignment:    %d\n", __func__, alignment);
@@ -174,6 +177,10 @@ BertEncoder::BertEncoder(const std::string &gguf_model) {
     ln_e_w = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.weight");
     ln_e_b = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.bias");
 
+    // pooler
+    pooler_e_w = get_tensor(ctx.ctx_data, "pooler.dense.weight");
+    pooler_e_b = get_tensor(ctx.ctx_data, "pooler.dense.bias");
+
     // layers
     layers.resize(hparams.n_layer);
     for (int i = 0; i < hparams.n_layer; ++i) {
@@ -210,22 +217,23 @@ BertEncoder::BertEncoder(const std::string &gguf_model) {
       layer.ln_out_b = get_tensor(ctx.ctx_data, pre + "output.LayerNorm.bias");
     }
   }
-
   // free metadata
   ggml_free(ctx_ggml);
   gguf_free(ctx_gguf);
 }
 
-std::vector<float> BertEncoder::Forward(const encoding &enc, bool normalize) {
-  std::vector<encoding> batch = {enc};
-  return BatchForward(batch)[0];
+std::vector<float> BertEncoder::Forward(const Encoding &enc, bool normalize,
+                                        int pooling_method) {
+  std::vector<Encoding> batch = {enc};
+  return BatchForward(batch, pooling_method)[0];
 }
 
 std::vector<std::vector<float>>
-BertEncoder::BatchForward(const std::vector<encoding> &batch, bool normalize) {
+BertEncoder::BatchForward(const std::vector<Encoding> &batch, bool normalize,
+                          int pooling_method) {
   Clear();
   // build compute graph
-  auto graph = BuildGraph(batch, normalize);
+  auto graph = BuildGraph(batch, normalize, pooling_method);
 
   // alloc graph
   ctx.compute_allocr =
@@ -252,8 +260,6 @@ BertEncoder::BatchForward(const std::vector<encoding> &batch, bool normalize) {
   // because the tensor data is stored in device buffer, we need to copy it back
   // to RAM
   ggml_backend_tensor_get(result, result_data, 0, ggml_nbytes(result));
-  // printf("mul mat (%d x %d) (transposed result):\n", (int)result->ne[0],
-  //        (int)result->ne[1]);
   for (int j = 0; j < result->ne[1] /* rows */; j++) {
     std::vector<float> emb;
 
@@ -288,8 +294,9 @@ void BertEncoder::Clear() {
   }
 }
 
-struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<encoding> &batch,
-                                            bool normalize) {
+struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<Encoding> &batch,
+                                            bool normalize,
+                                            int pooling_method) {
   // extract model params
   const int n_embd = hparams.n_embd;
   const int n_layer = hparams.n_layer;
@@ -322,7 +329,7 @@ struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<encoding> &batch,
       ctx.compute_ctx, GGML_TYPE_F32, 1, cur_batch_size, 1, n_batch_size);
   struct ggml_tensor *positions = ggml_new_tensor_1d(
       ctx.compute_ctx, GGML_TYPE_I32, cur_batch_size * n_batch_size);
-  struct ggml_tensor *sum =
+  struct ggml_tensor *pooler =
       ggml_new_tensor_3d(ctx.compute_ctx, GGML_TYPE_F32, cur_batch_size, 1,
                          n_batch_size); // the avg pooler
   struct ggml_tensor *minus_one = ggml_new_tensor_1d(
@@ -335,7 +342,7 @@ struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<encoding> &batch,
   int32_t *token_types_data = (int32_t *)malloc(ggml_nbytes(token_types));
   float *pad_mask_data = (float *)malloc(ggml_nbytes(pad_mask));
   int32_t *pos_data = (int32_t *)malloc(ggml_nbytes(positions));
-  float *sum_data = (float *)malloc(ggml_nbytes(sum));
+  float *pooler_data = (float *)malloc(ggml_nbytes(pooler));
   float m1 = -1.0f;
 
   for (int ba = 0; ba < n_batch_size; ba++) {
@@ -348,10 +355,29 @@ struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<encoding> &batch,
       token_layer_data[ba * cur_batch_size + i] = batch[ba].ids[i];
       pad_mask_data[ba * cur_batch_size + i] =
           static_cast<float>(batch[ba].attention_mask[i]);
-      sum_data[ba * cur_batch_size + i] = 1 / static_cast<float>(cur_len);
+      if (pooling_method == POOLING_METHOD_CLS) {
+        // [CLS] is the first token, we only need the first one, for the later
+        // mulmat
+        pooler_data[ba * cur_batch_size + i] = (i == 0 ? 1 : 0);
+      } else if (pooling_method == POOLING_METHOD_MEAN) {
+        // default to use mean pooling
+        pooler_data[ba * cur_batch_size + i] =
+            (i < batch[ba].no_pad_len
+                 ? 1 / static_cast<float>(batch[ba].no_pad_len)
+                 : 0.0);
+      } else {
+        throw "unknow pooling method";
+      }
 
       token_types_data[ba * cur_batch_size + i] = 0;
-      pos_data[ba * cur_batch_size + i] = i;
+
+      if (arch == ARCH_XLMROBERTA) {
+        // start from pad_token_id + 1, pad token is ignored
+        pos_data[ba * cur_batch_size + i] =
+            (i < batch[ba].no_pad_len ? i + 2 : 0);
+      } else {
+        pos_data[ba * cur_batch_size + i] = i;
+      }
     }
   }
 
@@ -361,14 +387,14 @@ struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<encoding> &batch,
                           ggml_nbytes(token_types));
   ggml_backend_tensor_set(pad_mask, pad_mask_data, 0, ggml_nbytes(pad_mask));
   ggml_backend_tensor_set(positions, pos_data, 0, ggml_nbytes(positions));
-  ggml_backend_tensor_set(sum, sum_data, 0, ggml_nbytes(sum));
+  ggml_backend_tensor_set(pooler, pooler_data, 0, ggml_nbytes(pooler));
   ggml_backend_tensor_set(minus_one, &m1, 0, sizeof(m1));
 
   free(token_layer_data);
   free(token_types_data);
   free(pad_mask_data);
   free(pos_data);
-  free(sum_data);
+  free(pooler_data);
 
   // Create a `ggml_cgraph` for forward operation
   struct ggml_init_params params1 = {
@@ -491,10 +517,9 @@ struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<encoding> &batch,
     inpL = cur;
   }
 
-  // pooling (sum = [L, 1, B])
   inpL = ggml_mul_mat(ctx_cgraph,
                       ggml_cont(ctx_cgraph, ggml_transpose(ctx_cgraph, inpL)),
-                      sum);                                       // [E, 1, B]
+                      pooler);                                    // [ 1, E, B ]
   inpL = ggml_reshape_2d(ctx_cgraph, inpL, n_embd, n_batch_size); // [E, B]
 
   // l2 normalize
@@ -524,15 +549,17 @@ Embedding::Embedding(const std::string &hf_token_json,
   model = new BertEncoder(gguf_model);
 }
 
-std::vector<float> Embedding::Encode(const std::string &text, bool normalize) {
+std::vector<float> Embedding::Encode(const std::string &text, bool normalize,
+                                     int pooling_method) {
   std::vector<std::string> batch = {text};
-  return BatchEncode(batch, normalize)[0];
+  return BatchEncode(batch, normalize, pooling_method)[0];
 }
 
 std::vector<std::vector<float>>
-Embedding::BatchEncode(const std::vector<std::string> &batch, bool normalize) {
+Embedding::BatchEncode(const std::vector<std::string> &batch, bool normalize,
+                       int pooling_method) {
   auto encodings = tok->EncodeBatch(batch);
-  auto embeddings = model->BatchForward(encodings, normalize);
+  auto embeddings = model->BatchForward(encodings, normalize, pooling_method);
   return embeddings;
 }
 

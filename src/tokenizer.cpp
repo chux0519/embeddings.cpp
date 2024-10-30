@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <vector>
 
 namespace embeddings {
 
@@ -12,17 +13,22 @@ Tokenizer::Tokenizer(const std::string &path) {
   tok = tok_.release();
 }
 
-encoding Tokenizer::Encode(const std::string &text, bool add_special_tokens) {
+Encoding Tokenizer::Encode(const std::string &text, bool add_special_tokens) {
   std::vector<std::string> texts = {text};
   return EncodeBatch(texts, add_special_tokens)[0];
 }
 
-std::vector<encoding>
+std::vector<Encoding>
 Tokenizer::EncodeBatch(const std::vector<std::string> &texts,
                        bool add_special_tokens) {
-  auto results = tok->EncodeBatch(texts, add_special_tokens);
-  if (results.size() <= 1) {
+  std::vector<Encoding> results;
+
+  auto hf_results = tok->EncodeBatch(texts, add_special_tokens);
+  if (hf_results.empty()) {
     return results;
+  }
+  for (auto item : hf_results) {
+    results.push_back({item.ids, item.attention_mask, item.ids.size()});
   }
 
   auto size0 = results[0].ids.size();
@@ -38,9 +44,10 @@ Tokenizer::EncodeBatch(const std::vector<std::string> &texts,
     // some model always returns full length, like text2vec-base-multilingual
     // shrink to the max size in the batch
     size_t max_size = 0;
-    for (auto enc : results) {
+    for (auto &enc : results) {
       for (size_t pos = 0; pos < enc.attention_mask.size(); pos++) {
         if (enc.attention_mask[pos] == 0) {
+          enc.no_pad_len = pos;
           if (pos > max_size)
             max_size = pos;
           break;

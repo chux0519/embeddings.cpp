@@ -14,6 +14,12 @@
 #define KEY_FTYPE "general.file_type"
 #define KEY_NAME "general.name"
 #define KEY_DESCRIPTION "general.description"
+#define KEY_ARCHITECTURE "general.architecture"
+
+#define ARCH_XLMROBERTA "XLMRobertaModel"
+
+#define POOLING_METHOD_MEAN 0
+#define POOLING_METHOD_CLS 1
 
 namespace embeddings {
 class EncoderBlock {
@@ -76,15 +82,18 @@ public:
 class BertEncoder {
 public:
   BertEncoder(const std::string &);
-  std::vector<float> Forward(const encoding &, bool normalize = true);
-  std::vector<std::vector<float>> BatchForward(const std::vector<encoding> &,
-                                               bool normalize = true);
+  std::vector<float> Forward(const Encoding &, bool normalize = true,
+                             int pooling_method = 0);
+  std::vector<std::vector<float>> BatchForward(const std::vector<Encoding> &,
+                                               bool normalize = true,
+                                               int pooling_method = 0);
 
 private:
-  struct ggml_cgraph *BuildGraph(const std::vector<encoding> &batch,
-                                 bool normalize);
+  struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
+                                 bool normalize = true, int pooling_method = 0);
   void Clear();
 
+  std::string arch;
   BertEncoderConfig hparams;
   BackendContext ctx;
   struct ggml_tensor *word_embeddings;
@@ -92,6 +101,8 @@ private:
   struct ggml_tensor *position_embeddings;
   struct ggml_tensor *ln_e_w;
   struct ggml_tensor *ln_e_b;
+  struct ggml_tensor *pooler_e_w;
+  struct ggml_tensor *pooler_e_b;
 
   std::vector<EncoderBlock> layers;
 };
@@ -99,9 +110,11 @@ private:
 class Embedding {
 public:
   Embedding(const std::string &hf_token_json, const std::string &gguf_model);
-  std::vector<float> Encode(const std::string &, bool normalize = true);
+  std::vector<float> Encode(const std::string &, bool normalize = true,
+                            int pooling_method = 0);
   std::vector<std::vector<float>> BatchEncode(const std::vector<std::string> &,
-                                              bool normalize = true);
+                                              bool normalize = true,
+                                              int pooling_method = 0);
 
 private:
   Tokenizer *tok;
