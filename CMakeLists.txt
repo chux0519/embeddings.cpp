@@ -3,12 +3,13 @@ project(embeddings.cpp)
 
 set(CMAKE_CXX_STANDARD 17)
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_subdirectory(ggml)
 include_directories(ggml/include)
 
 add_subdirectory(hf_tokenizers)
 include_directories(hf_tokenizers/include)
-
 
 set(EMBEDDING_SOURCES 
     src/bert.cpp
@@ -33,7 +34,6 @@ if (EMBEDDINGS_CPP_ENABLE_PYBIND)
     pybind11_add_module(_C src/embeddings_pybind.cpp)
     target_link_libraries(_C PRIVATE embeddings)
 endif ()
-
 
 # stub
 add_custom_target(stub

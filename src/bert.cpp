@@ -1,5 +1,9 @@
 #include "bert.h"
+#include "ggml-cpu.h"
 #include "ggml.h"
+#ifdef GGML_USE_METAL
+#include "ggml-metal.h"
+#endif
 #include "tokenizer.h"
 #include "utils.h"
 
@@ -76,8 +80,18 @@ BertEncoder::BertEncoder(const std::string &gguf_model) {
   }
 
   // init backend
-  ctx.backend = ggml_backend_cpu_init();
-  fprintf(stderr, "%s: using CPU backend\n", __func__);
+#ifdef GGML_USE_METAL
+  fprintf(stderr, "%s: using Metal backend\n", __func__);
+  ctx.backend = ggml_backend_metal_init();
+  if (!ctx.backend) {
+    fprintf(stderr, "%s: ggml_backend_metal_init() failed\n", __func__);
+  }
+#endif
+
+  // if there aren't GPU Backends fallback to CPU backend
+  if (!ctx.backend) {
+    ctx.backend = ggml_backend_cpu_init();
+  }
 
   // model tensor sizing
   size_t buffer_size = 32 * 1024; // TODO: need some extra room??
