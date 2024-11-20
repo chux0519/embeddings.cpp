@@ -90,6 +90,7 @@ BertEncoder::BertEncoder(const std::string &gguf_model) {
 
   // if there aren't GPU Backends fallback to CPU backend
   if (!ctx.backend) {
+    fprintf(stderr, "%s: using CPU backend\n", __func__);
     ctx.backend = ggml_backend_cpu_init();
   }
 
