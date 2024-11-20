@@ -3,3 +3,4 @@ __init__.pyi
 build
 .cache
 models
+compile_commands.json

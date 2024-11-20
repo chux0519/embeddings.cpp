@@ -99,7 +99,7 @@ class CMakeBuild(build_ext):
             if archs:
                 cmake_args += ["-DCMAKE_OSX_ARCHITECTURES={}".format(";".join(archs))]
             # Enable metal by default
-            cmake_args += ["-DGGML_METAL=ON"]
+            cmake_args += ["-DGGML_METAL=ON", "-DGGML_METAL_EMBED_LIBRARY=ON"]
         # Set CMAKE_BUILD_PARALLEL_LEVEL to control the parallel build level
         # across all generators.
         # if "CMAKE_BUILD_PARALLEL_LEVEL" not in os.environ:
