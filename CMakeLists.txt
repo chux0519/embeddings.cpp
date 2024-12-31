@@ -13,6 +13,7 @@ include_directories(hf_tokenizers/include)
 
 set(EMBEDDING_SOURCES 
     src/bert.cpp
+    src/transformer.cpp
     src/tokenizer.cpp
     src/utils.cpp
 )
