@@ -26,7 +26,7 @@ add_executable(test_tokenizer tests/test_tokenizer.cpp)
 add_executable(test_embedding tests/test_embedding.cpp)
 target_link_libraries(embedding_cli PRIVATE embeddings)
 target_link_libraries(test_tokenizer PRIVATE embeddings)
-target_link_libraries(test_embedding tests/test_embedding.cpp)
+target_link_libraries(test_embedding PRIVATE embeddings)
 
 option(EMBEDDINGS_CPP_ENABLE_PYBIND "embeddings.cpp: enable python binding" OFF)
 if (EMBEDDINGS_CPP_ENABLE_PYBIND)
