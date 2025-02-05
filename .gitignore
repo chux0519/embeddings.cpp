@@ -4,3 +4,5 @@ build
 .cache
 models
 compile_commands.json
+.vs
+CMakeSettings.json
