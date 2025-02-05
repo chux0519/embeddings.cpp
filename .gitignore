@@ -6,3 +6,4 @@ models
 compile_commands.json
 .vs
 CMakeSettings.json
+.vscode
