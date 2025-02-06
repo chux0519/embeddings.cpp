@@ -33,7 +33,7 @@ Tokenizer::EncodeBatch(const std::vector<std::string> &texts,
 
   auto size0 = results[0].ids.size();
   bool is_same_size = true;
-  for (size_t i = 1; i < results.size(); ++i) {
+  for(size_t i = 1; i < results.size(); ++i) {
     if (results[i].ids.size() != size0) {
       is_same_size = false;
       break;

@@ -9,14 +9,11 @@
 #endif
 #include "tokenizer.h"
 #include "utils.h"
-
 #include <fstream>
-
-#define BERT_MAX_NODES 4096
 
 namespace embeddings {
 
-BertEncoder::BertEncoder(const std::string &gguf_model) {
+BertModel::BertModel(const std::string &gguf_model) {
   struct ggml_context *ctx_ggml = NULL;
 
   struct gguf_init_params gguf_params = {
@@ -57,7 +54,7 @@ BertEncoder::BertEncoder(const std::string &gguf_model) {
   fprintf(stderr, "%s: ftype:        %s\n", __func__, ftype_str.c_str());
   fprintf(stderr, "\n");
 
-  hparams = BertEncoderConfig();
+  hparams = BertConfig();
   // load hparams
   {
     hparams.n_vocab = get_u32(ctx_gguf, "vocab_size");
@@ -193,18 +190,18 @@ BertEncoder::BertEncoder(const std::string &gguf_model) {
   // use get_tensors to populate bert_model
   {
     // embeddings weights
-    word_embeddings =
+    embeddings.word_embeddings =
         get_tensor(ctx.ctx_data, "embeddings.word_embeddings.weight");
-    token_type_embeddings =
+    embeddings.token_type_embeddings =
         get_tensor(ctx.ctx_data, "embeddings.token_type_embeddings.weight");
-    position_embeddings =
+    embeddings.position_embeddings =
         get_tensor(ctx.ctx_data, "embeddings.position_embeddings.weight");
-    ln_e_w = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.weight");
-    ln_e_b = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.bias");
+    embeddings.ln_e_w = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.weight");
+    embeddings.ln_e_b = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.bias");
 
     // pooler
-    pooler_e_w = get_tensor(ctx.ctx_data, "pooler.dense.weight");
-    pooler_e_b = get_tensor(ctx.ctx_data, "pooler.dense.bias");
+    embeddings.pooler_e_w = get_tensor(ctx.ctx_data, "pooler.dense.weight");
+    embeddings.pooler_e_b = get_tensor(ctx.ctx_data, "pooler.dense.bias");
 
     // layers
     layers.resize(hparams.n_layer);
@@ -247,14 +244,14 @@ BertEncoder::BertEncoder(const std::string &gguf_model) {
   gguf_free(ctx_gguf);
 }
 
-std::vector<float> BertEncoder::Forward(const Encoding &enc, bool normalize,
+std::vector<float> BertModel::Forward(const Encoding &enc, bool normalize,
                                         int pooling_method) {
   std::vector<Encoding> batch = {enc};
   return BatchForward(batch, pooling_method)[0];
 }
 
 std::vector<std::vector<float>>
-BertEncoder::BatchForward(const std::vector<Encoding> &batch, bool normalize,
+BertModel::BatchForward(const std::vector<Encoding> &batch, bool normalize,
                           int pooling_method) {
   Clear();
   // build compute graph
@@ -300,7 +297,7 @@ BertEncoder::BatchForward(const std::vector<Encoding> &batch, bool normalize,
   return ret;
 }
 
-void BertEncoder::Clear() {
+void BertModel::Clear() {
   if (ctx.compute_graph_ctx) {
     ggml_free(ctx.compute_graph_ctx);
     ctx.compute_graph_ctx = NULL;
@@ -319,7 +316,7 @@ void BertEncoder::Clear() {
   }
 }
 
-struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<Encoding> &batch,
+struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
                                             bool normalize,
                                             int pooling_method) {
   // extract model params
@@ -442,20 +439,20 @@ struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<Encoding> &batch,
 
   // get various embedding components
   struct ggml_tensor *inpL =
-      ggml_get_rows(ctx_cgraph, word_embeddings, token_layer); // [E, L * B]
+      ggml_get_rows(ctx_cgraph, embeddings.word_embeddings, token_layer); // [E, L * B]
   inpL = ggml_add(ctx_cgraph,
-                  ggml_get_rows(ctx_cgraph, token_type_embeddings, token_types),
+                  ggml_get_rows(ctx_cgraph, embeddings.token_type_embeddings, token_types),
                   inpL);
   inpL =
       ggml_add(ctx_cgraph,
-               ggml_get_rows(ctx_cgraph, position_embeddings, positions), inpL);
+               ggml_get_rows(ctx_cgraph, embeddings.position_embeddings, positions), inpL);
   inpL = ggml_reshape_3d(ctx_cgraph, inpL, n_embd, cur_batch_size,
                          n_batch_size); // [E, L, B]
 
   // embed layer norm
   inpL = ggml_norm_inplace(ctx_cgraph, inpL, layer_norm_eps);
-  inpL = ggml_add(ctx_cgraph, ggml_mul(ctx_cgraph, inpL, ln_e_w),
-                  ln_e_b); // [E, L, B]
+  inpL = ggml_add(ctx_cgraph, ggml_mul(ctx_cgraph, inpL, embeddings.ln_e_w),
+                  embeddings.ln_e_b); // [E, L, B]
 
   // layers
   for (int il = 0; il < n_layer; il++) {
@@ -542,6 +539,7 @@ struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<Encoding> &batch,
     inpL = cur;
   }
 
+  // pooler
   inpL = ggml_mul_mat(ctx_cgraph,
                       ggml_cont(ctx_cgraph, ggml_transpose(ctx_cgraph, inpL)),
                       pooler);                                    // [ 1, E, B ]
@@ -566,12 +564,10 @@ struct ggml_cgraph *BertEncoder::BuildGraph(const std::vector<Encoding> &batch,
   return gf;
 }
 
-void EncoderBlock::Forward() {}
-
 Embedding::Embedding(const std::string &hf_token_json,
                      const std::string &gguf_model) {
   tok = new Tokenizer(hf_token_json);
-  model = new BertEncoder(gguf_model);
+  model = new BertModel(gguf_model);
 }
 
 std::vector<float> Embedding::Encode(const std::string &text, bool normalize,

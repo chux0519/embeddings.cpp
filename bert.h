@@ -15,43 +15,13 @@
 #define KEY_NAME "general.name"
 #define KEY_DESCRIPTION "general.description"
 #define KEY_ARCHITECTURE "general.architecture"
-
 #define ARCH_XLMROBERTA "XLMRobertaModel"
 
 #define POOLING_METHOD_MEAN 0
 #define POOLING_METHOD_CLS 1
 
 namespace embeddings {
-class EncoderBlock {
-public:
-  void Forward();
-
-  // attention
-  struct ggml_tensor *q_w;
-  struct ggml_tensor *q_b;
-  struct ggml_tensor *k_w;
-  struct ggml_tensor *k_b;
-  struct ggml_tensor *v_w;
-  struct ggml_tensor *v_b;
-
-  struct ggml_tensor *o_w;
-  struct ggml_tensor *o_b;
-
-  struct ggml_tensor *ln_att_w;
-  struct ggml_tensor *ln_att_b;
-
-  // ff
-  struct ggml_tensor *ff_i_w;
-  struct ggml_tensor *ff_i_b;
-
-  struct ggml_tensor *ff_o_w;
-  struct ggml_tensor *ff_o_b;
-
-  struct ggml_tensor *ln_out_w;
-  struct ggml_tensor *ln_out_b;
-};
-
-struct BertEncoderConfig {
+struct BertConfig {
   int32_t n_vocab;
   int32_t n_max_tokens;
   int32_t n_embd;
@@ -79,9 +49,45 @@ public:
   ggml_gallocr_t compute_allocr = NULL;
 };
 
-class BertEncoder {
+struct InputEmbedding {
+  struct ggml_tensor *word_embeddings;
+  struct ggml_tensor *token_type_embeddings;
+  struct ggml_tensor *position_embeddings;
+  struct ggml_tensor *ln_e_w;
+  struct ggml_tensor *ln_e_b;
+  struct ggml_tensor *pooler_e_w;
+  struct ggml_tensor *pooler_e_b;
+};
+
+struct EncoderBlock {
+  // attention
+  struct ggml_tensor *q_w;
+  struct ggml_tensor *q_b;
+  struct ggml_tensor *k_w;
+  struct ggml_tensor *k_b;
+  struct ggml_tensor *v_w;
+  struct ggml_tensor *v_b;
+
+  struct ggml_tensor *o_w;
+  struct ggml_tensor *o_b;
+
+  struct ggml_tensor *ln_att_w;
+  struct ggml_tensor *ln_att_b;
+
+  // ff
+  struct ggml_tensor *ff_i_w;
+  struct ggml_tensor *ff_i_b;
+
+  struct ggml_tensor *ff_o_w;
+  struct ggml_tensor *ff_o_b;
+
+  struct ggml_tensor *ln_out_w;
+  struct ggml_tensor *ln_out_b;
+};
+
+class BertModel {
 public:
-  BertEncoder(const std::string &);
+  BertModel(const std::string &);
   std::vector<float> Forward(const Encoding &, bool normalize = true,
                              int pooling_method = 0);
   std::vector<std::vector<float>> BatchForward(const std::vector<Encoding> &,
@@ -94,16 +100,10 @@ private:
   void Clear();
 
   std::string arch;
-  BertEncoderConfig hparams;
+  BertConfig hparams;
   BackendContext ctx;
-  struct ggml_tensor *word_embeddings;
-  struct ggml_tensor *token_type_embeddings;
-  struct ggml_tensor *position_embeddings;
-  struct ggml_tensor *ln_e_w;
-  struct ggml_tensor *ln_e_b;
-  struct ggml_tensor *pooler_e_w;
-  struct ggml_tensor *pooler_e_b;
 
+  InputEmbedding embeddings;
   std::vector<EncoderBlock> layers;
 };
 
@@ -118,6 +118,6 @@ public:
 
 private:
   Tokenizer *tok;
-  BertEncoder *model;
+  BertModel *model;
 };
 } // namespace embeddings

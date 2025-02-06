@@ -1,5 +1,5 @@
-#include "bert.h"
-#include "utils.h"
+#include "../bert.h"
+#include "../utils.h"
 #include <cstddef>
 #include <iostream>
 

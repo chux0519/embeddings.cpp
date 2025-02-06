@@ -13,15 +13,14 @@ add_subdirectory(hf_tokenizers)
 include_directories(hf_tokenizers/include)
 
 set(EMBEDDING_SOURCES 
-    src/bert.cpp
-    src/tokenizer.cpp
-    src/utils.cpp
+    bert.cpp
+    tokenizer.cpp
+    utils.cpp
 )
 add_library(embeddings STATIC ${EMBEDDING_SOURCES})
 target_link_libraries(embeddings PUBLIC ggml tokenizers_cpp)
 
-include_directories(include)
-add_executable(embedding_cli main.cpp)
+add_executable(embedding_cli cli.cpp)
 add_executable(test_tokenizer tests/test_tokenizer.cpp)
 add_executable(test_embedding tests/test_embedding.cpp)
 target_link_libraries(embedding_cli PRIVATE embeddings)
@@ -32,7 +31,7 @@ option(EMBEDDINGS_CPP_ENABLE_PYBIND "embeddings.cpp: enable python binding" OFF)
 if (EMBEDDINGS_CPP_ENABLE_PYBIND)
     set_target_properties(embeddings ggml tokenizers_cpp PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
     add_subdirectory(pybind11)
-    pybind11_add_module(_C src/embeddings_pybind.cpp)
+    pybind11_add_module(_C pybind.cpp)
     target_link_libraries(_C PRIVATE embeddings)
 endif ()
 

@@ -54,6 +54,12 @@ pip install .
 
 # Generate Python stub files
 cd build && make stub
+
+# on Windows
+pip install pybind11-stubgen
+# then
+C:\Users\xxxx\AppData\Roaming\Python\Python312\Scripts\pybind11-stubgen embeddings_
+cpp -o .
 ```
 
 ## Building from Source
@@ -72,5 +78,5 @@ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
 build with vulkan support:
 
 ```powershell
-cmake -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON ..
+cmake -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON ..
 ```
