@@ -4,6 +4,9 @@
 #ifdef GGML_USE_METAL
 #include "ggml-metal.h"
 #endif
+#ifdef GGML_USE_VULKAN
+#include "ggml-vulkan.h"
+#endif
 #include "tokenizer.h"
 #include "utils.h"
 
@@ -85,6 +88,13 @@ BertEncoder::BertEncoder(const std::string &gguf_model) {
   ctx.backend = ggml_backend_metal_init();
   if (!ctx.backend) {
     fprintf(stderr, "%s: ggml_backend_metal_init() failed\n", __func__);
+  }
+#endif
+#ifdef GGML_USE_VULKAN
+  fprintf(stderr, "%s: using Vulkan backend\n", __func__);
+  ctx.backend = ggml_backend_vk_init(0);
+  if (!ctx.backend) {
+    fprintf(stderr, "%s: ggml_backend_vulkan_init() failed\n", __func__);
   }
 #endif
 
