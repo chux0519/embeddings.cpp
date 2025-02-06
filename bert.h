@@ -22,12 +22,12 @@
 
 namespace embeddings {
 struct BertConfig {
-  int32_t n_vocab;
-  int32_t n_max_tokens;
-  int32_t n_embd;
-  int32_t n_intermediate;
-  int32_t n_head;
-  int32_t n_layer;
+  int32_t vocab_size;
+  int32_t max_position_embedding;
+  int32_t hidden_size;
+  int32_t intermediate_size;
+  int32_t num_attention_heads;
+  int32_t num_hidden_layers;
   float_t layer_norm_eps;
 };
 
@@ -49,7 +49,7 @@ public:
   ggml_gallocr_t compute_allocr = NULL;
 };
 
-struct InputEmbedding {
+struct BertEmbedding {
   struct ggml_tensor *word_embeddings;
   struct ggml_tensor *token_type_embeddings;
   struct ggml_tensor *position_embeddings;
@@ -103,7 +103,7 @@ private:
   BertConfig hparams;
   BackendContext ctx;
 
-  InputEmbedding embeddings;
+  BertEmbedding embeddings;
   std::vector<EncoderBlock> layers;
 };
 

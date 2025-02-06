@@ -57,23 +57,23 @@ BertModel::BertModel(const std::string &gguf_model) {
   hparams = BertConfig();
   // load hparams
   {
-    hparams.n_vocab = get_u32(ctx_gguf, "vocab_size");
-    hparams.n_max_tokens = get_u32(ctx_gguf, "max_position_embedding");
-    hparams.n_embd = get_u32(ctx_gguf, "hidden_size");
-    hparams.n_intermediate = get_u32(ctx_gguf, "intermediate_size");
-    hparams.n_head = get_u32(ctx_gguf, "num_attention_heads");
-    hparams.n_layer = get_u32(ctx_gguf, "num_hidden_layers");
+    hparams.vocab_size = get_u32(ctx_gguf, "vocab_size");
+    hparams.max_position_embedding = get_u32(ctx_gguf, "max_position_embedding");
+    hparams.hidden_size = get_u32(ctx_gguf, "hidden_size");
+    hparams.intermediate_size = get_u32(ctx_gguf, "intermediate_size");
+    hparams.num_attention_heads = get_u32(ctx_gguf, "num_attention_heads");
+    hparams.num_hidden_layers = get_u32(ctx_gguf, "num_hidden_layers");
     hparams.layer_norm_eps = get_f32(ctx_gguf, "layer_norm_eps");
 
     fprintf(stderr, "%s: MODEL\n", __func__);
-    fprintf(stderr, "%s: n_vocab        = %d\n", __func__, hparams.n_vocab);
-    fprintf(stderr, "%s: n_max_tokens   = %d\n", __func__,
-            hparams.n_max_tokens);
-    fprintf(stderr, "%s: n_embd         = %d\n", __func__, hparams.n_embd);
-    fprintf(stderr, "%s: n_intermediate = %d\n", __func__,
-            hparams.n_intermediate);
-    fprintf(stderr, "%s: n_head         = %d\n", __func__, hparams.n_head);
-    fprintf(stderr, "%s: n_layer        = %d\n", __func__, hparams.n_layer);
+    fprintf(stderr, "%s: vocab_size        = %d\n", __func__, hparams.vocab_size);
+    fprintf(stderr, "%s: max_position_embedding   = %d\n", __func__,
+            hparams.max_position_embedding);
+    fprintf(stderr, "%s: hidden_size         = %d\n", __func__, hparams.hidden_size);
+    fprintf(stderr, "%s: intermediate_size = %d\n", __func__,
+            hparams.intermediate_size);
+    fprintf(stderr, "%s: num_attention_heads         = %d\n", __func__, hparams.num_attention_heads);
+    fprintf(stderr, "%s: num_hidden_layers        = %d\n", __func__, hparams.num_hidden_layers);
     fprintf(stderr, "%s: layer_norm_eps = %g\n", __func__,
             hparams.layer_norm_eps);
     fprintf(stderr, "\n");
@@ -204,8 +204,8 @@ BertModel::BertModel(const std::string &gguf_model) {
     embeddings.pooler_e_b = get_tensor(ctx.ctx_data, "pooler.dense.bias");
 
     // layers
-    layers.resize(hparams.n_layer);
-    for (int i = 0; i < hparams.n_layer; ++i) {
+    layers.resize(hparams.num_hidden_layers);
+    for (int i = 0; i < hparams.num_hidden_layers; ++i) {
       auto &layer = layers[i];
       std::string pre = "encoder.layer." + std::to_string(i) + ".";
 
@@ -320,10 +320,10 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
                                             bool normalize,
                                             int pooling_method) {
   // extract model params
-  const int n_embd = hparams.n_embd;
-  const int n_layer = hparams.n_layer;
-  const int n_max_tokens = hparams.n_max_tokens;
-  const int n_head = hparams.n_head;
+  const int n_embd = hparams.hidden_size;
+  const int n_layer = hparams.num_hidden_layers;
+  const int n_max_tokens = hparams.max_position_embedding;
+  const int n_head = hparams.num_attention_heads;
   const float layer_norm_eps = hparams.layer_norm_eps;
   const int d_head = n_embd / n_head; // E = D * H
 
