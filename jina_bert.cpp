@@ -526,12 +526,10 @@ namespace embeddings
     inpL = ggml_add(ctx_cgraph, ggml_mul(ctx_cgraph, inpL, embeddings.ln_e_w),
                     embeddings.ln_e_b); // [E, L, B]
 
-    ggml_set_name(inpL, "first_input_states_debug");
     // layers
     for (int il = 0; il < n_layer; il++)
     {
       struct ggml_tensor *cur = inpL;
-      ggml_set_name(cur, "entry_debug");
 
       // self-attention
       {
@@ -549,10 +547,6 @@ namespace embeddings
         k_layer = ggml_reshape_4d(ctx_cgraph, k_layer, d_head, n_head, cur_batch_size, n_batch_size);
         v_layer = ggml_reshape_4d(ctx_cgraph, v_layer, d_head, n_head, cur_batch_size, n_batch_size);
 
-        ggml_set_name(q_layer, "q_debug");
-        ggml_set_name(k_layer, "k_debug");
-        ggml_set_name(v_layer, "v_debug");
-
         q_layer = ggml_cont(ctx_cgraph, ggml_permute(ctx_cgraph, q_layer, 0, 2, 1, 3)); // D, H, L, B -> [D, L, H, B] {64, 5, 12, 1}
         k_layer = ggml_cont(ctx_cgraph, ggml_permute(ctx_cgraph, k_layer, 0, 2, 1, 3)); // {64, 5, 12, 1}
         v_layer = ggml_cont(ctx_cgraph, ggml_permute(ctx_cgraph, v_layer, 1, 2, 0, 3)); // D, H, L, B -> [H, L, D, B]
@@ -561,11 +555,10 @@ namespace embeddings
         struct ggml_tensor * attention_scores;
         attention_scores = ggml_mul_mat(ctx_cgraph, k_layer, q_layer); // [L, L, n_head, B] {5, 5, 12, 1}
         attention_scores = ggml_scale_inplace(ctx_cgraph, attention_scores, 1.0f / sqrt((float)d_head));
-        ggml_set_name(attention_scores, "attention_scores_debug");
+
         attention_scores = ggml_add(ctx_cgraph, attention_scores, attn_mask);
         attention_scores = ggml_add(ctx_cgraph, attention_scores, alibi_bias);
         struct ggml_tensor * attention_probs = ggml_soft_max(ctx_cgraph, attention_scores); // [L, L, n_head, B] {5, 5, 12, 1}
-        ggml_set_name(attention_probs, "attention_probs_debug");
 
         struct ggml_tensor * attention_output = ggml_mul_mat(ctx_cgraph, v_layer, attention_probs); // [d_head, L, n_head, B]
         attention_output = ggml_cont(ctx_cgraph, ggml_permute(ctx_cgraph, attention_output, 0, 2, 1, 3)); // -> [D, H, L, B]
@@ -576,8 +569,6 @@ namespace embeddings
       // attention output
       cur = ggml_add(ctx_cgraph, ggml_mul_mat(ctx_cgraph, layers[il].o_w, cur),
                      layers[il].o_b);
-      ggml_set_name(cur, "mixer_debug");
-
       // residual connection
       cur = ggml_add(ctx_cgraph, cur, inpL);
       // attention layer norm
@@ -587,7 +578,6 @@ namespace embeddings
 
       // store for later
       struct ggml_tensor *norm2_res = cur;
-      ggml_set_name(norm2_res, "glumlp_input_norm2_res_debug");
 
       // GLUMLP
       int in_features = n_embd;
@@ -596,24 +586,18 @@ namespace embeddings
       // 1. gated_layers
       // {768, 6144, 1, 1} * {768, 5 , 1, 1} = {6144, 5, 1, 1}
       struct ggml_tensor *gated_layers = ggml_mul_mat(ctx_cgraph, layers[il].mlp_gated_layers_w, cur);
-      ggml_set_name(gated_layers, "gated_layers_debug");
 
       // 2. Split gated and non-gated parts
       struct ggml_tensor *gated = ggml_view_2d(ctx_cgraph, gated_layers, hidden_features, cur->ne[1], gated_layers->nb[1], 0); // {3072, 5, 1, 1}
       struct ggml_tensor *non_gated = ggml_view_2d(ctx_cgraph, gated_layers, hidden_features, cur->ne[1], gated_layers->nb[1], hidden_features * gated_layers->nb[0]);
-      ggml_set_name(gated, "gated_half_debug");
-      ggml_set_name(non_gated, "non_gated_half_debug");
-
 
       // 3. Activation function (GELU) // {3072, 5, 1, 1}
       gated = ggml_gelu(ctx_cgraph, gated);
       // 4. Element-wise multiplication // {3072, 5, 1, 1}
       cur = ggml_mul(ctx_cgraph, gated, non_gated);
-      ggml_set_name(cur, "gelu_gated_mul_non_gated_debug");
 
       // 6. wo (linear transformation)
       struct ggml_tensor *glumlp_out = ggml_add(ctx_cgraph, ggml_mul_mat(ctx_cgraph, layers[il].mlp_out_w, cur), layers[il].mlp_out_b);
-      ggml_set_name(glumlp_out, "glumlp_out_debug");
 
       cur = ggml_add(ctx_cgraph, glumlp_out, norm2_res);
       // output layer norm
@@ -622,7 +606,6 @@ namespace embeddings
                      layers[il].norm2_b);
       // on to next layer
       inpL = cur;
-      ggml_set_name(inpL, "last_inpL_debug");
     }
 
     // pooler
