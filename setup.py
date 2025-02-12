@@ -121,7 +121,10 @@ class CMakeBuild(build_ext):
 
 
 HERE = Path(__file__).resolve().parent
-version = re.search(r'__version__ = "(.*?)"', (HERE / "embeddings_cpp/__init__.py").read_text(encoding="utf-8")).group(1)
+version_match = re.search(r'__version__ = "(.*?)"', (HERE / "embeddings_cpp/__init__.py").read_text(encoding="utf-8"))
+if version_match is None:
+    raise RuntimeError("Failed to find version string in embeddings_cpp/__init__.py")
+version = version_match.group(1)
 
 setup(
     version=version,

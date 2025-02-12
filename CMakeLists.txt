@@ -13,6 +13,7 @@ add_subdirectory(hf_tokenizers)
 include_directories(hf_tokenizers/include)
 
 set(EMBEDDING_SOURCES 
+    jina_bert.cpp
     bert.cpp
     tokenizer.cpp
     utils.cpp

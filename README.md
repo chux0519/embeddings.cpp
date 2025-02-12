@@ -58,8 +58,7 @@ cd build && make stub
 # on Windows
 pip install pybind11-stubgen
 # then
-C:\Users\xxxx\AppData\Roaming\Python\Python312\Scripts\pybind11-stubgen embeddings_
-cpp -o .
+C:\Users\chuxd\AppData\Roaming\Python\Python312\Scripts\pybind11-stubgen embeddings_cpp -o .
 ```
 
 ## Building from Source

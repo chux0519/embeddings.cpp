@@ -485,7 +485,7 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
       V = ggml_reshape_4d(ctx_cgraph, V, d_head, n_head, cur_batch_size,
                           n_batch_size); // [D, H, L, B]
       V = ggml_cont(ctx_cgraph,
-                    ggml_permute(ctx_cgraph, V, 1, 2, 0, 3)); // [L, D, H, B]
+                    ggml_permute(ctx_cgraph, V, 1, 2, 0, 3)); // [H, L, D, B]
 
       // scaled attention
       struct ggml_tensor *KQ =
