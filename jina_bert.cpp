@@ -590,10 +590,7 @@ namespace embeddings
       // 2. Split gated and non-gated parts
       struct ggml_tensor *gated = ggml_view_2d(ctx_cgraph, gated_layers, hidden_features, cur->ne[1], gated_layers->nb[1], 0); // {3072, 5, 1, 1}
       struct ggml_tensor *non_gated = ggml_view_2d(ctx_cgraph, gated_layers, hidden_features, cur->ne[1], gated_layers->nb[1], hidden_features * gated_layers->nb[0]);
-#ifdef GGML_USE_VULKAN
       gated = ggml_cont(ctx_cgraph, gated);
-      non_gated = ggml_cont(ctx_cgraph, non_gated);
-#endif
 
 
       // 3. Activation function (GELU) // {3072, 5, 1, 1}
