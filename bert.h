@@ -1,15 +1,16 @@
 #pragma once
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <cmath>
+#include <string>
+#include <vector>
+
 #include "ggml-alloc.h"
 #include "ggml-backend.h"
 #include "ggml.h"
 #include "tokenizer.h"
-
-#include <cmath>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <string>
-#include <vector>
 
 #define KEY_FTYPE "general.file_type"
 #define KEY_NAME "general.name"
@@ -32,7 +33,7 @@ struct BertConfig {
 };
 
 class BackendContext {
-public:
+ public:
   // ggml context for weights
   struct ggml_context *ctx_data = NULL;
 
@@ -86,7 +87,7 @@ struct EncoderBlock {
 };
 
 class BertModel {
-public:
+ public:
   BertModel(const std::string &);
   std::vector<float> Forward(const Encoding &, bool normalize = true,
                              int pooling_method = 0);
@@ -94,7 +95,7 @@ public:
                                                bool normalize = true,
                                                int pooling_method = 0);
 
-private:
+ private:
   struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
                                  bool normalize = true, int pooling_method = 0);
   void Clear();
@@ -108,7 +109,7 @@ private:
 };
 
 class Embedding {
-public:
+ public:
   Embedding(const std::string &hf_token_json, const std::string &gguf_model);
   std::vector<float> Encode(const std::string &, bool normalize = true,
                             int pooling_method = 0);
@@ -116,8 +117,8 @@ public:
                                               bool normalize = true,
                                               int pooling_method = 0);
 
-private:
+ private:
   Tokenizer *tok;
   BertModel *model;
 };
-} // namespace embeddings
+}  // namespace embeddings

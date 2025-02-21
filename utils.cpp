@@ -24,8 +24,7 @@ std::string load_bytes_from_file(const std::string &path) {
 void print_encode_result(const std::vector<int> &ids) {
   std::cout << "[";
   for (size_t i = 0; i < ids.size(); ++i) {
-    if (i != 0)
-      std::cout << ", ";
+    if (i != 0) std::cout << ", ";
     std::cout << ids[i];
   }
   std::cout << "]" << std::endl;
@@ -34,8 +33,7 @@ void print_encode_result(const std::vector<int> &ids) {
 void print_tensors(const std::vector<float> &tensors) {
   std::cout << "[";
   for (size_t i = 0; i < tensors.size(); ++i) {
-    if (i != 0)
-      std::cout << ", ";
+    if (i != 0) std::cout << ", ";
     std::cout << tensors[i];
   }
   std::cout << "]" << std::endl;
@@ -98,4 +96,4 @@ std::string to_lowercase(const std::string &str) {
                  ::tolower);
   return lower_str;
 }
-} // namespace embeddings
+}  // namespace embeddings

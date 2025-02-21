@@ -1,4 +1,5 @@
 #include "bert.h"
+
 #include "ggml-cpu.h"
 #include "ggml.h"
 #ifdef GGML_USE_METAL
@@ -7,9 +8,10 @@
 #ifdef GGML_USE_VULKAN
 #include "ggml-vulkan.h"
 #endif
+#include <fstream>
+
 #include "tokenizer.h"
 #include "utils.h"
-#include <fstream>
 
 namespace embeddings {
 
@@ -58,7 +60,8 @@ BertModel::BertModel(const std::string &gguf_model) {
   // load hparams
   {
     hparams.vocab_size = get_u32(ctx_gguf, "vocab_size");
-    hparams.max_position_embedding = get_u32(ctx_gguf, "max_position_embedding");
+    hparams.max_position_embedding =
+        get_u32(ctx_gguf, "max_position_embedding");
     hparams.hidden_size = get_u32(ctx_gguf, "hidden_size");
     hparams.intermediate_size = get_u32(ctx_gguf, "intermediate_size");
     hparams.num_attention_heads = get_u32(ctx_gguf, "num_attention_heads");
@@ -66,14 +69,18 @@ BertModel::BertModel(const std::string &gguf_model) {
     hparams.layer_norm_eps = get_f32(ctx_gguf, "layer_norm_eps");
 
     fprintf(stderr, "%s: MODEL\n", __func__);
-    fprintf(stderr, "%s: vocab_size        = %d\n", __func__, hparams.vocab_size);
+    fprintf(stderr, "%s: vocab_size        = %d\n", __func__,
+            hparams.vocab_size);
     fprintf(stderr, "%s: max_position_embedding   = %d\n", __func__,
             hparams.max_position_embedding);
-    fprintf(stderr, "%s: hidden_size         = %d\n", __func__, hparams.hidden_size);
+    fprintf(stderr, "%s: hidden_size         = %d\n", __func__,
+            hparams.hidden_size);
     fprintf(stderr, "%s: intermediate_size = %d\n", __func__,
             hparams.intermediate_size);
-    fprintf(stderr, "%s: num_attention_heads         = %d\n", __func__, hparams.num_attention_heads);
-    fprintf(stderr, "%s: num_hidden_layers        = %d\n", __func__, hparams.num_hidden_layers);
+    fprintf(stderr, "%s: num_attention_heads         = %d\n", __func__,
+            hparams.num_attention_heads);
+    fprintf(stderr, "%s: num_hidden_layers        = %d\n", __func__,
+            hparams.num_hidden_layers);
     fprintf(stderr, "%s: layer_norm_eps = %g\n", __func__,
             hparams.layer_norm_eps);
     fprintf(stderr, "\n");
@@ -102,7 +109,7 @@ BertModel::BertModel(const std::string &gguf_model) {
   }
 
   // model tensor sizing
-  size_t buffer_size = 32 * 1024; // TODO: need some extra room??
+  size_t buffer_size = 32 * 1024;  // TODO: need some extra room??
   {
     for (int i = 0; i < n_tensors; ++i) {
       const char *name = gguf_get_tensor_name(ctx_gguf, i);
@@ -245,14 +252,13 @@ BertModel::BertModel(const std::string &gguf_model) {
 }
 
 std::vector<float> BertModel::Forward(const Encoding &enc, bool normalize,
-                                        int pooling_method) {
+                                      int pooling_method) {
   std::vector<Encoding> batch = {enc};
   return BatchForward(batch, pooling_method)[0];
 }
 
-std::vector<std::vector<float>>
-BertModel::BatchForward(const std::vector<Encoding> &batch, bool normalize,
-                          int pooling_method) {
+std::vector<std::vector<float>> BertModel::BatchForward(
+    const std::vector<Encoding> &batch, bool normalize, int pooling_method) {
   Clear();
   // build compute graph
   auto graph = BuildGraph(batch, normalize, pooling_method);
@@ -267,8 +273,8 @@ BertModel::BatchForward(const std::vector<Encoding> &batch, bool normalize,
   printf("compute buffer size: %.2f MB\n", bufferss_size / 1024.0 / 1024.0);
 
   // runn the computation
-  int n_threads = 1; // Optional: number of threads to perform some operations
-                     // with multi-threading
+  int n_threads = 1;  // Optional: number of threads to perform some operations
+                      // with multi-threading
   if (ggml_backend_is_cpu(ctx.backend)) {
     ggml_backend_cpu_set_n_threads(ctx.backend, n_threads);
   }
@@ -286,7 +292,6 @@ BertModel::BatchForward(const std::vector<Encoding> &batch, bool normalize,
     std::vector<float> emb;
 
     for (int i = 0; i < result->ne[0] /* cols */; i++) {
-
       emb.push_back(result_data[j * result->ne[0] + i]);
     }
     ret.push_back(emb);
@@ -317,18 +322,17 @@ void BertModel::Clear() {
 }
 
 struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
-                                            bool normalize,
-                                            int pooling_method) {
+                                          bool normalize, int pooling_method) {
   // extract model params
   const int n_embd = hparams.hidden_size;
   const int n_layer = hparams.num_hidden_layers;
   const int n_max_tokens = hparams.max_position_embedding;
   const int n_head = hparams.num_attention_heads;
   const float layer_norm_eps = hparams.layer_norm_eps;
-  const int d_head = n_embd / n_head; // E = D * H
+  const int d_head = n_embd / n_head;  // E = D * H
 
-  int n_batch_size = batch.size();          // B
-  int cur_batch_size = batch[0].ids.size(); // L
+  int n_batch_size = batch.size();           // B
+  int cur_batch_size = batch[0].ids.size();  // L
 
   size_t ctx_size =
       GGML_DEFAULT_GRAPH_SIZE * ggml_tensor_overhead() + ggml_graph_overhead();
@@ -353,9 +357,9 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
       ctx.compute_ctx, GGML_TYPE_I32, cur_batch_size * n_batch_size);
   struct ggml_tensor *pooler =
       ggml_new_tensor_3d(ctx.compute_ctx, GGML_TYPE_F32, cur_batch_size, 1,
-                         n_batch_size); // the avg pooler
+                         n_batch_size);  // the avg pooler
   struct ggml_tensor *minus_one = ggml_new_tensor_1d(
-      ctx.compute_ctx, GGML_TYPE_F32, 1); // for attention mask
+      ctx.compute_ctx, GGML_TYPE_F32, 1);  // for attention mask
   ctx.compute_buffer =
       ggml_backend_alloc_ctx_tensors(ctx.compute_ctx, ctx.backend);
 
@@ -422,8 +426,8 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
   struct ggml_init_params params1 = {
       /*.mem_size   =*/ctx_size,
       /*.mem_buffer =*/NULL,
-      /*.no_alloc   =*/true, // the tensors will be allocated later by
-                             // ggml_gallocr_alloc_graph()
+      /*.no_alloc   =*/true,  // the tensors will be allocated later by
+                              // ggml_gallocr_alloc_graph()
   };
   ctx.compute_graph_ctx = ggml_init(params1);
   struct ggml_context *ctx_cgraph = ctx.compute_graph_ctx;
@@ -432,27 +436,29 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
 
   // outer product the padding mask to kill off outside
   struct ggml_tensor *attn_mask =
-      ggml_mul_mat(ctx_cgraph, pad_mask, pad_mask);       // [L, L, 1, B]
-  attn_mask = ggml_add(ctx_cgraph, attn_mask, minus_one); // result -0
+      ggml_mul_mat(ctx_cgraph, pad_mask, pad_mask);        // [L, L, 1, B]
+  attn_mask = ggml_add(ctx_cgraph, attn_mask, minus_one);  // result -0
   attn_mask = ggml_scale_inplace(ctx_cgraph, attn_mask,
-                                 100000.0f); // FIXME: 1e3 will cause overflow?
+                                 100000.0f);  // FIXME: 1e3 will cause overflow?
 
   // get various embedding components
-  struct ggml_tensor *inpL =
-      ggml_get_rows(ctx_cgraph, embeddings.word_embeddings, token_layer); // [E, L * B]
-  inpL = ggml_add(ctx_cgraph,
-                  ggml_get_rows(ctx_cgraph, embeddings.token_type_embeddings, token_types),
-                  inpL);
-  inpL =
-      ggml_add(ctx_cgraph,
-               ggml_get_rows(ctx_cgraph, embeddings.position_embeddings, positions), inpL);
+  struct ggml_tensor *inpL = ggml_get_rows(
+      ctx_cgraph, embeddings.word_embeddings, token_layer);  // [E, L * B]
+  inpL = ggml_add(
+      ctx_cgraph,
+      ggml_get_rows(ctx_cgraph, embeddings.token_type_embeddings, token_types),
+      inpL);
+  inpL = ggml_add(
+      ctx_cgraph,
+      ggml_get_rows(ctx_cgraph, embeddings.position_embeddings, positions),
+      inpL);
   inpL = ggml_reshape_3d(ctx_cgraph, inpL, n_embd, cur_batch_size,
-                         n_batch_size); // [E, L, B]
+                         n_batch_size);  // [E, L, B]
 
   // embed layer norm
   inpL = ggml_norm_inplace(ctx_cgraph, inpL, layer_norm_eps);
   inpL = ggml_add(ctx_cgraph, ggml_mul(ctx_cgraph, inpL, embeddings.ln_e_w),
-                  embeddings.ln_e_b); // [E, L, B]
+                  embeddings.ln_e_b);  // [E, L, B]
 
   // layers
   for (int il = 0; il < n_layer; il++) {
@@ -463,46 +469,46 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
       // extract Q
       struct ggml_tensor *Q = cur;
       Q = ggml_add(ctx_cgraph, ggml_mul_mat(ctx_cgraph, layers[il].q_w, Q),
-                   layers[il].q_b); // [E, L, B]
+                   layers[il].q_b);  // [E, L, B]
       Q = ggml_reshape_4d(ctx_cgraph, Q, d_head, n_head, cur_batch_size,
-                          n_batch_size); // [D, H, L, B]
+                          n_batch_size);  // [D, H, L, B]
       Q = ggml_cont(ctx_cgraph,
-                    ggml_permute(ctx_cgraph, Q, 0, 2, 1, 3)); // [D, L, H, B]
+                    ggml_permute(ctx_cgraph, Q, 0, 2, 1, 3));  // [D, L, H, B]
 
       // extract K
       struct ggml_tensor *K = cur;
       K = ggml_add(ctx_cgraph, ggml_mul_mat(ctx_cgraph, layers[il].k_w, K),
-                   layers[il].k_b); // [E, L, B]
+                   layers[il].k_b);  // [E, L, B]
       K = ggml_reshape_4d(ctx_cgraph, K, d_head, n_head, cur_batch_size,
-                          n_batch_size); // [D, H, L, B]
+                          n_batch_size);  // [D, H, L, B]
       K = ggml_cont(ctx_cgraph,
-                    ggml_permute(ctx_cgraph, K, 0, 2, 1, 3)); // [D, L, H, B]
+                    ggml_permute(ctx_cgraph, K, 0, 2, 1, 3));  // [D, L, H, B]
 
       // extract V
       struct ggml_tensor *V = cur;
       V = ggml_add(ctx_cgraph, ggml_mul_mat(ctx_cgraph, layers[il].v_w, V),
-                   layers[il].v_b); // [E, L, B]
+                   layers[il].v_b);  // [E, L, B]
       V = ggml_reshape_4d(ctx_cgraph, V, d_head, n_head, cur_batch_size,
-                          n_batch_size); // [D, H, L, B]
+                          n_batch_size);  // [D, H, L, B]
       V = ggml_cont(ctx_cgraph,
-                    ggml_permute(ctx_cgraph, V, 1, 2, 0, 3)); // [H, L, D, B]
+                    ggml_permute(ctx_cgraph, V, 1, 2, 0, 3));  // [H, L, D, B]
 
       // scaled attention
       struct ggml_tensor *KQ =
-          ggml_mul_mat(ctx_cgraph, K, Q); // -> [L, L, H, B]
+          ggml_mul_mat(ctx_cgraph, K, Q);  // -> [L, L, H, B]
       KQ = ggml_scale_inplace(ctx_cgraph, KQ, 1.0f / sqrt((float)d_head));
       KQ = ggml_add(ctx_cgraph, KQ, attn_mask);
       KQ = ggml_soft_max(ctx_cgraph, KQ);
 
       // get weighted values
       struct ggml_tensor *KQV =
-          ggml_mul_mat(ctx_cgraph, V, KQ); // -> [D, L, H, B]
+          ggml_mul_mat(ctx_cgraph, V, KQ);  // -> [D, L, H, B]
       KQV = ggml_cont(ctx_cgraph, ggml_permute(ctx_cgraph, KQV, 0, 2, 1,
-                                               3)); // -> [D, H, L, B]
+                                               3));  // -> [D, H, L, B]
 
       // copy back to input (E = D * H)
       cur = ggml_reshape_3d(ctx_cgraph, KQV, n_embd, cur_batch_size,
-                            n_batch_size); // [E, L, B]
+                            n_batch_size);  // [E, L, B]
     }
 
     // attention output
@@ -542,16 +548,16 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
   // pooler
   inpL = ggml_mul_mat(ctx_cgraph,
                       ggml_cont(ctx_cgraph, ggml_transpose(ctx_cgraph, inpL)),
-                      pooler);                                    // [ 1, E, B ]
-  inpL = ggml_reshape_2d(ctx_cgraph, inpL, n_embd, n_batch_size); // [E, B]
+                      pooler);  // [ 1, E, B ]
+  inpL = ggml_reshape_2d(ctx_cgraph, inpL, n_embd, n_batch_size);  // [E, B]
 
   // l2 normalize
   if (normalize) {
-    inpL = ggml_rms_norm(ctx_cgraph, inpL, layer_norm_eps); // [E, B]
+    inpL = ggml_rms_norm(ctx_cgraph, inpL, layer_norm_eps);  // [E, B]
     inpL = ggml_scale_inplace(
         ctx_cgraph, inpL,
-        1.0f / sqrt((float)n_embd)); // [E, B] (since rms_norm does
-                                     // mean instead of sum)
+        1.0f / sqrt((float)n_embd));  // [E, B] (since rms_norm does
+                                      // mean instead of sum)
   }
 
   // final output
@@ -576,12 +582,11 @@ std::vector<float> Embedding::Encode(const std::string &text, bool normalize,
   return BatchEncode(batch, normalize, pooling_method)[0];
 }
 
-std::vector<std::vector<float>>
-Embedding::BatchEncode(const std::vector<std::string> &batch, bool normalize,
-                       int pooling_method) {
+std::vector<std::vector<float>> Embedding::BatchEncode(
+    const std::vector<std::string> &batch, bool normalize, int pooling_method) {
   auto encodings = tok->EncodeBatch(batch);
   auto embeddings = model->BatchForward(encodings, normalize, pooling_method);
   return embeddings;
 }
 
-} // namespace embeddings
+}  // namespace embeddings

@@ -45,7 +45,7 @@ struct JinaEncoderBlock {
 };
 
 class JinaBertModel {
-public:
+ public:
   JinaBertModel(const std::string &);
   std::vector<float> Forward(const Encoding &, bool normalize = true,
                              int pooling_method = 0);
@@ -53,7 +53,7 @@ public:
                                                bool normalize = true,
                                                int pooling_method = 0);
 
-private:
+ private:
   struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
                                  bool normalize = true, int pooling_method = 0);
   void Clear();
@@ -67,17 +67,18 @@ private:
 };
 
 class JinaEmbedding {
-  public:
-  JinaEmbedding(const std::string &hf_token_json, const std::string &gguf_model);
-    std::vector<float> Encode(const std::string &, bool normalize = true,
-                              int pooling_method = 0);
-    std::vector<std::vector<float>> BatchEncode(const std::vector<std::string> &,
-                                                bool normalize = true,
-                                                int pooling_method = 0);
-  
-  private:
-    Tokenizer *tok;
-    JinaBertModel *model;
+ public:
+  JinaEmbedding(const std::string &hf_token_json,
+                const std::string &gguf_model);
+  std::vector<float> Encode(const std::string &, bool normalize = true,
+                            int pooling_method = 0);
+  std::vector<std::vector<float>> BatchEncode(const std::vector<std::string> &,
+                                              bool normalize = true,
+                                              int pooling_method = 0);
+
+ private:
+  Tokenizer *tok;
+  JinaBertModel *model;
 };
 
-} // namespace embeddings
+}  // namespace embeddings

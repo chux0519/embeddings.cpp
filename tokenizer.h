@@ -21,7 +21,7 @@ struct Encoding {
 };
 
 class Tokenizer {
-public:
+ public:
   Tokenizer(const std::string &path);
 
   Encoding Encode(const std::string &, bool add_special_tokens = true);
@@ -31,7 +31,7 @@ public:
 
   tokenizers::HFTokenizer *GetFastTokenizer();
 
-private:
+ private:
   tokenizers::HFTokenizer *tok;
 };
-} // namespace embeddings
+}  // namespace embeddings

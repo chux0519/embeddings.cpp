@@ -1,10 +1,10 @@
-#include "bert.h"
-#include "jina_bert.h"
-#include "tokenizer.h"
-
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
+
+#include "bert.h"
+#include "jina_bert.h"
+#include "tokenizer.h"
 
 namespace embeddings {
 
@@ -55,4 +55,4 @@ PYBIND11_MODULE(_C, m) {
            "texts"_a, "normalize"_a = true, "pooling_method"_a = 0);
 }
 
-} // namespace embeddings
+}  // namespace embeddings

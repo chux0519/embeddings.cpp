@@ -1,9 +1,11 @@
 #include "tokenizer.h"
-#include "utils.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <vector>
+
+#include "utils.h"
 
 namespace embeddings {
 
@@ -18,9 +20,8 @@ Encoding Tokenizer::Encode(const std::string &text, bool add_special_tokens) {
   return EncodeBatch(texts, add_special_tokens)[0];
 }
 
-std::vector<Encoding>
-Tokenizer::EncodeBatch(const std::vector<std::string> &texts,
-                       bool add_special_tokens) {
+std::vector<Encoding> Tokenizer::EncodeBatch(
+    const std::vector<std::string> &texts, bool add_special_tokens) {
   std::vector<Encoding> results;
 
   auto hf_results = tok->EncodeBatch(texts, add_special_tokens);
@@ -33,7 +34,7 @@ Tokenizer::EncodeBatch(const std::vector<std::string> &texts,
 
   auto size0 = results[0].ids.size();
   bool is_same_size = true;
-  for(size_t i = 1; i < results.size(); ++i) {
+  for (size_t i = 1; i < results.size(); ++i) {
     if (results[i].ids.size() != size0) {
       is_same_size = false;
       break;
@@ -48,8 +49,7 @@ Tokenizer::EncodeBatch(const std::vector<std::string> &texts,
       for (size_t pos = 0; pos < enc.attention_mask.size(); pos++) {
         if (enc.attention_mask[pos] == 0) {
           enc.no_pad_len = pos;
-          if (pos > max_size)
-            max_size = pos;
+          if (pos > max_size) max_size = pos;
           break;
         }
       }
@@ -102,4 +102,4 @@ std::string Tokenizer::Decode(const tokens &ids, bool skip_special_tokens) {
 
 tokenizers::HFTokenizer *Tokenizer::GetFastTokenizer() { return tok; }
 
-} // namespace embeddings
+}  // namespace embeddings

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "ggml.h"
-
 #include <algorithm>
 #include <string>
 #include <vector>
+
+#include "ggml.h"
 
 namespace embeddings {
 std::string load_bytes_from_file(const std::string &path);
@@ -24,4 +24,4 @@ std::string get_ftype(int ftype);
 
 std::string to_lowercase(const std::string &str);
 
-} // namespace embeddings
+}  // namespace embeddings
