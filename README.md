@@ -36,6 +36,8 @@ python scripts/convert.py BAAI/bge-base-zh-v1.5 ./models/bge-base-zh-v1.5.fp16.g
 
 # Convert Text2Vec multilingual model
 python scripts/convert.py shibing624/text2vec-base-multilingual ./models/text2vec-base-multilingual.fp16.gguf f16
+
+python scripts/convert.py sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 ./models/paraphrase-multilingual-MiniLM-L12-v2.fp16.gguf f16
 ```
 
 ## Running Tests
