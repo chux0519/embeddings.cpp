@@ -16,7 +16,7 @@ void TestTokenizer(const std::string &tokenizer_file) {
   }
   // Check #1. Encode and Decode
   std::vector<std::string> prompts = {"你好，今天天气怎么样？",
-                                      "What's the weather like today?"};
+                                      "What's the weather like today?", "A blue cat"};
   auto res = tok.EncodeBatch(prompts);
   for (size_t i = 0; i < res.size(); ++i) {
     auto encoding = res[i];
@@ -47,8 +47,8 @@ void TestTokenizer(const std::string &tokenizer_file) {
 }
 
 int main() {
-  TestTokenizer("models/bge-base-zh-v1.5.tokenizer.json");
-  TestTokenizer("models/text2vec-base-multilingual.tokenizer.json");
-  TestTokenizer("models/bge-m3.tokenizer.json");
+  // TestTokenizer("models/bge-base-zh-v1.5.tokenizer.json");
+  // TestTokenizer("models/text2vec-base-multilingual.tokenizer.json");
+  TestTokenizer("models/snowflake-arctic-embed-m-v2.0.tokenizer.json");
   return 0;
 }

@@ -3,6 +3,7 @@
 
 #include "../bert.h"
 #include "../jina_bert.h"
+#include "../gte.h"
 #include "../utils.h"
 
 using namespace embeddings;
@@ -31,14 +32,27 @@ void TestJinaEmbedding(const std::string &tokenizer_file,
   }
 }
 
+void TestGteEmbedding(const std::string &tokenizer_file,
+                    const std::string &model_file, bool normalize,
+                    int pooling_method) {
+  auto model = GteEmbedding(tokenizer_file, model_file);
+  std::vector<std::string> prompts = {"A blue cat"};
+  auto res = model.BatchEncode(prompts, normalize, pooling_method);
+  for (size_t i = 0; i < prompts.size(); i++) {
+    std::cout << "prompt: " << prompts[i] << std::endl;
+    print_tensors(res[i]);
+  }
+}
+
+
 int main() {
-  TestEmbedding("models/text2vec-base-multilingual.tokenizer.json",
-                "models/text2vec-base-multilingual.fp16.gguf", true,
-                POOLING_METHOD_MEAN);
-  TestEmbedding("models/bge-base-zh-v1.5.tokenizer.json",
-                "models/bge-base-zh-v1.5.fp16.gguf", true, POOLING_METHOD_CLS);
-  TestEmbedding("models/bge-m3.tokenizer.json", "models/bge-m3.fp16.gguf", true,
-                POOLING_METHOD_CLS);
-  TestJinaEmbedding("models/jina-clip-v1.tokenizer.json",
-                    "models/jina-clip-v1.fp32.gguf", true, POOLING_METHOD_MEAN);
+  // TestEmbedding("models/text2vec-base-multilingual.tokenizer.json",
+  //               "models/text2vec-base-multilingual.fp16.gguf", true,
+  //               POOLING_METHOD_MEAN);
+  // TestEmbedding("models/bge-base-zh-v1.5.tokenizer.json",
+  //               "models/bge-base-zh-v1.5.fp16.gguf", true, POOLING_METHOD_CLS);
+  // TestEmbedding("models/bge-m3.tokenizer.json", "models/bge-m3.fp16.gguf", true,
+  //               POOLING_METHOD_CLS);
+  TestGteEmbedding("models/snowflake-arctic-embed-m-v2.0.tokenizer.json",
+                    "models/snowflake-arctic-embed-m-v2.0.fp16.gguf", true, POOLING_METHOD_CLS);
 }
