@@ -363,33 +363,54 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
   const int L = batch[0].ids.size();
   const float theta = hparams.rope_theta;
 
-  size_t ctx_size = GGML_DEFAULT_GRAPH_SIZE * ggml_tensor_overhead() + ggml_graph_overhead();
+  size_t ctx_size =
+      GGML_DEFAULT_GRAPH_SIZE * ggml_tensor_overhead() + ggml_graph_overhead();
 
   struct ggml_init_params params = {
-    ctx_size,
-    NULL,
-    true,
-};
+      ctx_size,
+      NULL,
+      true,
+  };
 
-ctx.compute_ctx = ggml_init(params);
-ctx.compute_graph_ctx = ggml_init(params);
-struct ggml_context *ctx0 = ctx.compute_graph_ctx;
+  ctx.compute_ctx = ggml_init(params);
+  ctx.compute_graph_ctx = ggml_init(params);
+  struct ggml_context *ctx0 = ctx.compute_graph_ctx;
 
-struct ggml_cgraph *gf = ggml_new_graph(ctx0);
-
-  std::vector<int32_t> ids, types(B * L, 0);
-  for (auto &b : batch) {
-    ids.insert(ids.end(), b.ids.begin(), b.ids.end());
-  }
+  struct ggml_cgraph *gf = ggml_new_graph(ctx0);
 
   struct ggml_tensor *input_ids =
       ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, B * L);
   struct ggml_tensor *token_types =
       ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, B * L);
+  struct ggml_tensor *pos =
+      ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, L);
+  struct ggml_tensor *pool =
+      ggml_new_tensor_3d(ctx.compute_ctx, GGML_TYPE_F32, L, 1, B);
+  ctx.compute_buffer =
+      ggml_backend_alloc_ctx_tensors(ctx.compute_ctx, ctx.backend);
+
+  std::vector<int32_t> ids, types(B * L, 0);
+  for (auto &b : batch) {
+    ids.insert(ids.end(), b.ids.begin(), b.ids.end());
+  }
   ggml_backend_tensor_set(input_ids, ids.data(), 0,
                           ids.size() * sizeof(int32_t));
   ggml_backend_tensor_set(token_types, types.data(), 0,
                           types.size() * sizeof(int32_t));
+
+  // create RoPE position indices [0, 1, 2, ..., L-1]
+  std::vector<int32_t> pos_data(L);
+  for (int i = 0; i < L; ++i) pos_data[i] = i;
+  ggml_backend_tensor_set(pos, pos_data.data(), 0, sizeof(int32_t) * L);
+
+  float *out_mask = (float *)malloc(sizeof(float) * B * L);
+  for (int b = 0; b < B; ++b) {
+    for (int i = 0; i < L; ++i) {
+      out_mask[b * L + i] =
+          pooling_method == 0 ? (i == 0 ? 1.f : 0.f) : 1.f / L;
+    }
+  }
+  ggml_backend_tensor_set(pool, out_mask, 0, sizeof(float) * B * L);
 
   struct ggml_tensor *emb =
       ggml_get_rows(ctx0, embeddings.word_embeddings, input_ids);
@@ -402,14 +423,6 @@ struct ggml_cgraph *gf = ggml_new_graph(ctx0);
                  embeddings.LayerNorm_b);
 
   struct ggml_tensor *inpL = emb;
-
-  // create RoPE position indices [0, 1, 2, ..., L-1]
-  std::vector<int32_t> pos_data(L);
-  for (int i = 0; i < L; ++i) pos_data[i] = i;
-  struct ggml_tensor *pos =
-      ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, L);
-  ggml_backend_tensor_set(pos, pos_data.data(), 0, sizeof(int32_t) * L);
-
   for (int il = 0; il < n_layer; il++) {
     const auto &layer = layers[il];
     struct ggml_tensor *cur = inpL;
@@ -426,26 +439,42 @@ struct ggml_cgraph *gf = ggml_new_graph(ctx0);
         ggml_cont(ctx0, ggml_view_3d(ctx0, qkv, n_embd, L, B, qkv->nb[1],
                                      qkv->nb[2], 2 * n_embd * qkv->nb[0]));
 
+    // Reshape q_layer and k_layer to 4D tensors before applying
+    // ggml_rope_custom_inplace D, H, L, B
     q_layer = ggml_reshape_4d(ctx0, q_layer, d_head, n_head, L, B);
     k_layer = ggml_reshape_4d(ctx0, k_layer, d_head, n_head, L, B);
     v_layer = ggml_reshape_4d(ctx0, v_layer, d_head, n_head, L, B);
 
-    q_layer = ggml_permute(ctx0, q_layer, 0, 2, 1, 3);
-    k_layer = ggml_permute(ctx0, k_layer, 0, 2, 1, 3);
-    v_layer = ggml_permute(ctx0, v_layer, 1, 2, 0, 3);
-
+    // Apply ggml_rope_custom_inplace after reshaping
     q_layer = ggml_rope_custom_inplace(ctx0, q_layer, pos, d_head, 0, L, theta,
                                        1.0f, 0.0f, 1.0f, 0.0f, 0.0f);
     k_layer = ggml_rope_custom_inplace(ctx0, k_layer, pos, d_head, 0, L, theta,
                                        1.0f, 0.0f, 1.0f, 0.0f, 0.0f);
 
+    q_layer = ggml_cont(
+        ctx0, ggml_permute(ctx0, q_layer, 0, 2, 1,
+                           3));  // D, H, L, B -> [D, L, H, B] {64, 5, 12, 1}
+    k_layer = ggml_cont(ctx0, ggml_permute(ctx0, k_layer, 0, 2, 1,
+                                           3));  // {64, 5, 12, 1}
+    v_layer = ggml_cont(ctx0, ggml_permute(ctx0, v_layer, 1, 2, 0,
+                                           3));  // D, H, L, B -> [H, L, D, B]
+
+    // Debug: Print dimensions of k_layer and q_layer
+    fprintf(stderr, "k_layer dimensions: [%d, %d, %d, %d]\n", k_layer->ne[0],
+            k_layer->ne[1], k_layer->ne[2], k_layer->ne[3]);
+    fprintf(stderr, "q_layer dimensions: [%d, %d, %d, %d]\n", q_layer->ne[0],
+            q_layer->ne[1], q_layer->ne[2], q_layer->ne[3]);
+
+    // Perform matrix multiplication after fixing dimensions
     struct ggml_tensor *scores = ggml_mul_mat(ctx0, k_layer, q_layer);
     scores = ggml_scale_inplace(ctx0, scores, 1.0f / sqrtf((float)d_head));
     scores = ggml_soft_max(ctx0, scores);
 
-    struct ggml_tensor *attn = ggml_mul_mat(ctx0, v_layer, scores);
-    attn = ggml_permute(ctx0, attn, 0, 2, 1, 3);
-    attn = ggml_reshape_3d(ctx0, attn, n_embd, L, B);
+    struct ggml_tensor *attn =
+        ggml_mul_mat(ctx0, v_layer, scores);  // D, L, H, B
+    attn =
+        ggml_cont(ctx0, ggml_permute(ctx0, attn, 0, 2, 1, 3));  // -> D, H, L, B
+    attn = ggml_reshape_3d(ctx0, attn, n_embd, L, B);           // -> E, L, B
 
     cur = ggml_add(ctx0, ggml_mul_mat(ctx0, layer.o_proj_w, attn),
                    layer.o_proj_b);
@@ -453,40 +482,40 @@ struct ggml_cgraph *gf = ggml_new_graph(ctx0);
     cur = ggml_norm_inplace(ctx0, cur, layer_norm_eps);
     cur = ggml_add(ctx0, ggml_mul(ctx0, cur, layer.attn_ln_w), layer.attn_ln_b);
 
-    const int hidden_size = hparams.intermediate_size;
-    const int token_count = L * B;
+    const int in_feature = n_embd;
+    const int hidden_features = hparams.intermediate_size;  // 3072
 
+    struct ggml_tensor *norm2_res = cur;
+
+    // 1. gated_layers
+    // {768, 6144, 1, 1} * {768, 5 , 1, 1} = {6144, 5, 1, 1}
     struct ggml_tensor *gate_up = ggml_mul_mat(ctx0, layer.up_gate_proj_w, cur);
+    // 2. Split gated and non-gated parts
     struct ggml_tensor *gate =
-        ggml_gelu(ctx0, ggml_view_3d(ctx0, gate_up, hidden_size, token_count, 1,
-                                     gate_up->nb[1], gate_up->nb[2], 0));
+        ggml_view_2d(ctx0, gate_up, hidden_features, cur->ne[1], gate_up->nb[1],
+                     0);  // {3072, 5, 1, 1}
     struct ggml_tensor *up =
-        ggml_view_3d(ctx0, gate_up, hidden_size, token_count, 1, gate_up->nb[1],
-                     gate_up->nb[2], hidden_size * gate_up->nb[0]);
+        ggml_view_2d(ctx0, gate_up, hidden_features, cur->ne[1], gate_up->nb[1],
+                     hidden_features * gate_up->nb[0]);
+    // 3. Activation function (GELU) // {3072, 5, 1, 1}
+    gate = ggml_cont(ctx0, gate);
+    gate = ggml_gelu(ctx0, gate);
+    // 4. Element-wise multiplication // {3072, 5, 1, 1}
+    cur = ggml_mul(ctx0, gate, up);
+    // 5. wo (linear transformation)
     struct ggml_tensor *ffn = ggml_add(
-        ctx0, ggml_mul_mat(ctx0, layer.down_proj_w, ggml_mul(ctx0, gate, up)),
-        layer.down_proj_b);
+        ctx0, ggml_mul_mat(ctx0, layer.down_proj_w, cur), layer.down_proj_b);
 
-    cur = ggml_add(ctx0, cur, ffn);
+    cur = ggml_add(ctx0, norm2_res, ffn);
     cur = ggml_norm_inplace(ctx0, cur, layer_norm_eps);
     cur = ggml_add(ctx0, ggml_mul(ctx0, cur, layer.mlp_ln_w), layer.mlp_ln_b);
 
     inpL = cur;
   }
 
-  struct ggml_tensor *out =
-      ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_embd, 1, B);
-  float *out_mask = (float *)malloc(sizeof(float) * B * L);
-  for (int b = 0; b < B; ++b) {
-    for (int i = 0; i < L; ++i) {
-      out_mask[b * L + i] =
-          pooling_method == 0 ? (i == 0 ? 1.f : 0.f) : 1.f / L;
-    }
-  }
-  struct ggml_tensor *pool =
-      ggml_new_tensor_3d(ctx.compute_ctx, GGML_TYPE_F32, L, 1, B);
-  ggml_backend_tensor_set(pool, out_mask, 0, sizeof(float) * B * L);
-  inpL = ggml_mul_mat(ctx0, ggml_transpose(ctx0, inpL), pool);
+  // C:\Users\chuxd\repos\embeddings.cpp\ggml\src\ggml.c:2692:
+  // GGML_ASSERT(!ggml_is_transposed(a)) failed
+  inpL = ggml_mul_mat(ctx0, ggml_cont(ctx0, ggml_transpose(ctx0, inpL)), pool);
   inpL = ggml_reshape_2d(ctx0, inpL, n_embd, B);
 
   if (normalize) {
