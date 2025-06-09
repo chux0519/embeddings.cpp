@@ -15,6 +15,80 @@
 
 namespace embeddings {
 
+// === PATCHED: helper for rotary embedding cache ===
+static std::pair<std::vector<float>, std::vector<float>> build_rope_cache(int max_pos, int dim, float rope_theta) {
+  const int half_dim = dim / 2;
+
+  std::vector<float> inv_freq(half_dim);
+  for (int i = 0; i < half_dim; ++i) {
+    inv_freq[i] = 1.0f / powf(rope_theta, (float)i / half_dim);
+  }
+
+  std::vector<float> cos_data(max_pos * dim);
+  std::vector<float> sin_data(max_pos * dim);
+
+  for (int pos = 0; pos < max_pos; ++pos) {
+    for (int i = 0; i < half_dim; ++i) {
+      float val = pos * inv_freq[i];
+      float cos_val = cosf(val);
+      float sin_val = sinf(val);
+      // duplicate like PyTorch cat((freqs, freqs))
+      cos_data[pos * dim + i] = cos_val;
+      cos_data[pos * dim + half_dim + i] = cos_val;
+      sin_data[pos * dim + i] = sin_val;
+      sin_data[pos * dim + half_dim + i] = sin_val;
+    }
+  }
+
+  return {cos_data, sin_data};
+}
+
+// === PATCHED: rope apply using cache ===
+ggml_tensor * ggml_apply_rotary_pos_emb(
+    struct ggml_context * ctx,
+    struct ggml_tensor * x,         // [D, L, H, B]
+    struct ggml_tensor * cos_tensor, // same shape or broadcastable
+    struct ggml_tensor * sin_tensor  // same shape or broadcastable
+) {
+    const int d = x->ne[0];
+    GGML_ASSERT(d % 2 == 0);
+    const int half_d = d / 2;
+
+    // view x1 = x[:d/2], x2 = x[d/2:]
+    struct ggml_tensor * x1 = ggml_view_4d(ctx, x,
+        half_d, x->ne[1], x->ne[2], x->ne[3],
+        x->nb[1], x->nb[2], x->nb[3], 0);
+
+    struct ggml_tensor * x2 = ggml_view_4d(ctx, x,
+        half_d, x->ne[1], x->ne[2], x->ne[3],
+        x->nb[1], x->nb[2], x->nb[3], half_d * x->nb[0]); // offset
+    x2 = ggml_cont(ctx, x2);
+
+    struct ggml_tensor * neg_x2 = ggml_scale(ctx, x2, -1.0f);
+    struct ggml_tensor * rotated = ggml_concat(ctx, neg_x2, x1, 0);  // [-x2, x1]
+
+    // final = x * cos + rotated * sin
+    struct ggml_tensor * cos_shaped = ggml_reshape_4d(ctx, cos_tensor,
+        cos_tensor->ne[0],  // D
+        1,                  // H (will be broadcasted)
+        cos_tensor->ne[1],  // L
+        1                   // B (will be broadcasted)
+    ); // => [D, H=1, L, B=1]
+    struct ggml_tensor * sin_shaped = ggml_reshape_4d(ctx, sin_tensor,
+        sin_tensor->ne[0],  // D
+        1,                  // H (will be broadcasted)
+        sin_tensor->ne[1],  // L
+        1                   // B (will be broadcasted)
+    ); // => [D, H=1, L, B=1]
+    struct ggml_tensor * cos_broadcast = ggml_repeat(ctx, cos_shaped, x);
+    struct ggml_tensor * sin_broadcast = ggml_repeat(ctx, sin_shaped, rotated);
+    struct ggml_tensor * out = ggml_add(ctx,
+        ggml_mul(ctx, x, cos_shaped),
+        ggml_mul(ctx, rotated, sin_shaped));
+
+    return out;
+}
+
 GteBertModel::GteBertModel(const std::string &gguf_model) {
   struct ggml_context *ctx_ggml = NULL;
 
@@ -303,53 +377,6 @@ void GteBertModel::Clear() {
   }
 }
 
-// reference from llama2
-// https://github.com/ggerganov/llama.cpp/blob/master/ggml.c#L12175
-static void apply_rope_inplace(struct ggml_tensor *q, struct ggml_tensor *k,
-                               int pos, int n_rot, float theta) {
-  GGML_ASSERT(q->ne[0] == k->ne[0]);
-  GGML_ASSERT(q->ne[1] == k->ne[1]);
-  GGML_ASSERT(q->ne[2] == k->ne[2]);
-  GGML_ASSERT(q->ne[3] == k->ne[3]);
-
-  const int n_elem = q->ne[0];
-  const int n_head = q->ne[2];
-  const int n_batch = q->ne[3];
-
-  // const float scale = 1.0f / powf(10000.0f, rot / (float)n_elem);
-
-  float *q_data = (float *)q->data;
-  float *k_data = (float *)k->data;
-
-  const size_t q_row_size = q->nb[1];
-  const size_t k_row_size = k->nb[1];
-
-  for (int b = 0; b < n_batch; ++b) {
-    for (int h = 0; h < n_head; ++h) {
-      float *q_ptr = q_data + b * q->nb[3] + h * q->nb[2];
-      float *k_ptr = k_data + b * k->nb[3] + h * k->nb[2];
-
-      for (int i = 0; i < n_elem; i += 2) {
-        const float q0 = q_ptr[i * q->nb[0]];
-        const float q1 = q_ptr[(i + 1) * q->nb[0]];
-
-        const float k0 = k_ptr[i * k->nb[0]];
-        const float k1 = k_ptr[(i + 1) * k->nb[0]];
-
-        const float inv_freq = theta * ((float)pos);
-        const float fC = cosf(inv_freq);
-        const float fS = sinf(inv_freq);
-
-        q_ptr[i * q->nb[0]] = q0 * fC - q1 * fS;
-        q_ptr[(i + 1) * q->nb[0]] = q0 * fS + q1 * fC;
-
-        k_ptr[i * k->nb[0]] = k0 * fC - k1 * fS;
-        k_ptr[(i + 1) * k->nb[0]] = k0 * fS + k1 * fC;
-      }
-    }
-  }
-}
-
 struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
                                              bool normalize,
                                              int pooling_method) {
@@ -382,10 +409,13 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
       ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, B * L);
   struct ggml_tensor *token_types =
       ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, B * L);
-  struct ggml_tensor *pos =
-      ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, L);
   struct ggml_tensor *pool =
       ggml_new_tensor_3d(ctx.compute_ctx, GGML_TYPE_F32, L, 1, B);
+  int max_position_embeddings = 8192;
+  struct ggml_tensor *pos =
+    ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, L);
+  struct ggml_tensor *rope_cos = ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, d_head, L);
+  struct ggml_tensor *rope_sin = ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, d_head, L);
   ctx.compute_buffer =
       ggml_backend_alloc_ctx_tensors(ctx.compute_ctx, ctx.backend);
 
@@ -393,21 +423,26 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
   for (auto &b : batch) {
     ids.insert(ids.end(), b.ids.begin(), b.ids.end());
   }
+  auto [rope_cos_data, rope_sin_data] = build_rope_cache(L, d_head, theta);
+    // create RoPE position indices [0, 1, 2, ..., L-1]
+  std::vector<int32_t> pos_data(L);
+  for (int i = 0; i < L; ++i) pos_data[i] = i;
+  ggml_backend_tensor_set(pos, pos_data.data(), 0, sizeof(int32_t) * L);
+
   ggml_backend_tensor_set(input_ids, ids.data(), 0,
                           ids.size() * sizeof(int32_t));
   ggml_backend_tensor_set(token_types, types.data(), 0,
                           types.size() * sizeof(int32_t));
-
-  // create RoPE position indices [0, 1, 2, ..., L-1]
-  std::vector<int32_t> pos_data(L);
-  for (int i = 0; i < L; ++i) pos_data[i] = i;
-  ggml_backend_tensor_set(pos, pos_data.data(), 0, sizeof(int32_t) * L);
+  ggml_backend_tensor_set(rope_cos, rope_cos_data.data(), 0,
+                          rope_cos_data.size() * sizeof(float));
+  ggml_backend_tensor_set(rope_sin, rope_sin_data.data(), 0,
+                          rope_sin_data.size() * sizeof(float));
 
   float *out_mask = (float *)malloc(sizeof(float) * B * L);
   for (int b = 0; b < B; ++b) {
     for (int i = 0; i < L; ++i) {
       out_mask[b * L + i] =
-          pooling_method == 0 ? (i == 0 ? 1.f : 0.f) : 1.f / L;
+          pooling_method == POOLING_METHOD_CLS ? (i == 0 ? 1.f : 0.f) : 1.f / L;
     }
   }
   ggml_backend_tensor_set(pool, out_mask, 0, sizeof(float) * B * L);
@@ -443,13 +478,10 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
     // ggml_rope_custom_inplace D, H, L, B
     q_layer = ggml_reshape_4d(ctx0, q_layer, d_head, n_head, L, B);
     k_layer = ggml_reshape_4d(ctx0, k_layer, d_head, n_head, L, B);
-    v_layer = ggml_reshape_4d(ctx0, v_layer, d_head, n_head, L, B);
+    v_layer = ggml_reshape_4d(ctx0, v_layer, d_head, n_head, L, B);            
 
-    // Apply ggml_rope_custom_inplace after reshaping
-    q_layer = ggml_rope_custom_inplace(ctx0, q_layer, pos, d_head, 0, L, theta,
-                                       1.0f, 0.0f, 1.0f, 0.0f, 0.0f);
-    k_layer = ggml_rope_custom_inplace(ctx0, k_layer, pos, d_head, 0, L, theta,
-                                       1.0f, 0.0f, 1.0f, 0.0f, 0.0f);
+    q_layer = ggml_apply_rotary_pos_emb(ctx0, q_layer, rope_cos, rope_sin);
+    k_layer = ggml_apply_rotary_pos_emb(ctx0, k_layer, rope_cos, rope_sin);
 
     q_layer = ggml_cont(
         ctx0, ggml_permute(ctx0, q_layer, 0, 2, 1,
@@ -458,12 +490,6 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
                                            3));  // {64, 5, 12, 1}
     v_layer = ggml_cont(ctx0, ggml_permute(ctx0, v_layer, 1, 2, 0,
                                            3));  // D, H, L, B -> [H, L, D, B]
-
-    // Debug: Print dimensions of k_layer and q_layer
-    fprintf(stderr, "k_layer dimensions: [%d, %d, %d, %d]\n", k_layer->ne[0],
-            k_layer->ne[1], k_layer->ne[2], k_layer->ne[3]);
-    fprintf(stderr, "q_layer dimensions: [%d, %d, %d, %d]\n", q_layer->ne[0],
-            q_layer->ne[1], q_layer->ne[2], q_layer->ne[3]);
 
     // Perform matrix multiplication after fixing dimensions
     struct ggml_tensor *scores = ggml_mul_mat(ctx0, k_layer, q_layer);
@@ -489,22 +515,22 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
 
     // 1. gated_layers
     // {768, 6144, 1, 1} * {768, 5 , 1, 1} = {6144, 5, 1, 1}
-    struct ggml_tensor *gate_up = ggml_mul_mat(ctx0, layer.up_gate_proj_w, cur);
+    struct ggml_tensor *up_gate = ggml_mul_mat(ctx0, layer.up_gate_proj_w, cur);
     // 2. Split gated and non-gated parts
-    struct ggml_tensor *gate =
-        ggml_view_2d(ctx0, gate_up, hidden_features, cur->ne[1], gate_up->nb[1],
+    struct ggml_tensor *up_state =
+        ggml_view_2d(ctx0, up_gate, hidden_features, cur->ne[1], up_gate->nb[1],
                      0);  // {3072, 5, 1, 1}
-    struct ggml_tensor *up =
-        ggml_view_2d(ctx0, gate_up, hidden_features, cur->ne[1], gate_up->nb[1],
-                     hidden_features * gate_up->nb[0]);
+    struct ggml_tensor *gate =
+        ggml_view_2d(ctx0, up_gate, hidden_features, cur->ne[1], up_gate->nb[1],
+                     hidden_features * up_gate->nb[0]);
     // 3. Activation function (GELU) // {3072, 5, 1, 1}
     gate = ggml_cont(ctx0, gate);
     gate = ggml_gelu(ctx0, gate);
     // 4. Element-wise multiplication // {3072, 5, 1, 1}
-    cur = ggml_mul(ctx0, gate, up);
+    struct ggml_tensor *gated_states = ggml_mul(ctx0, gate, up_state);
     // 5. wo (linear transformation)
     struct ggml_tensor *ffn = ggml_add(
-        ctx0, ggml_mul_mat(ctx0, layer.down_proj_w, cur), layer.down_proj_b);
+        ctx0, ggml_mul_mat(ctx0, layer.down_proj_w, gated_states), layer.down_proj_b);
 
     cur = ggml_add(ctx0, norm2_res, ffn);
     cur = ggml_norm_inplace(ctx0, cur, layer_norm_eps);
@@ -513,8 +539,6 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
     inpL = cur;
   }
 
-  // C:\Users\chuxd\repos\embeddings.cpp\ggml\src\ggml.c:2692:
-  // GGML_ASSERT(!ggml_is_transposed(a)) failed
   inpL = ggml_mul_mat(ctx0, ggml_cont(ctx0, ggml_transpose(ctx0, inpL)), pool);
   inpL = ggml_reshape_2d(ctx0, inpL, n_embd, B);
 
