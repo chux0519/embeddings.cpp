@@ -36,6 +36,8 @@ python scripts/convert.py BAAI/bge-base-zh-v1.5 ./models/bge-base-zh-v1.5.fp16.g
 
 # Convert Text2Vec multilingual model
 python scripts/convert.py shibing624/text2vec-base-multilingual ./models/text2vec-base-multilingual.fp16.gguf f16
+
+python scripts/convert.py sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 ./models/paraphrase-multilingual-MiniLM-L12-v2.fp16.gguf f16
 ```
 
 ## Running Tests
@@ -79,3 +81,9 @@ build with vulkan support:
 ```powershell
 cmake -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON ..
 ```
+
+## debugging
+
+for better debugging ggml, we could use 0001-feat-add-debug-support-for-only-cpu-backend.patch
+
+check: https://github.com/ggml-org/ggml/discussions/655 for details

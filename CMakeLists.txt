@@ -12,7 +12,8 @@ include_directories(ggml/include)
 add_subdirectory(hf_tokenizers)
 include_directories(hf_tokenizers/include)
 
-set(EMBEDDING_SOURCES 
+set(EMBEDDING_SOURCES
+    gte.cpp
     jina_bert.cpp
     bert.cpp
     tokenizer.cpp
