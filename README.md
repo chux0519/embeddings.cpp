@@ -81,3 +81,9 @@ build with vulkan support:
 ```powershell
 cmake -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON ..
 ```
+
+## debugging
+
+for better debugging ggml, we could use 0001-feat-add-debug-support-for-only-cpu-backend.patch
+
+check: https://github.com/ggml-org/ggml/discussions/655 for details
