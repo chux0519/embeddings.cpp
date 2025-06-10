@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "ggml.h"
+#include "gguf.h"
 
 namespace embeddings {
 std::string load_bytes_from_file(const std::string &path);
