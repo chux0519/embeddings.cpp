@@ -188,18 +188,25 @@ int main(int argc, char **argv) {
             tensor_sizes[i] = nbytes_tensor;
             printf("size: %8.2f MB -> %8.2f MB\n", ggml_nbytes(tensor) / 1024.0 / 1024.0, nbytes_tensor / 1024.0 / 1024.0);
         }
+        gguf_set_tensor_type(ctx_out, name, new_type);
+        gguf_set_tensor_data(ctx_out, name, tensor_datas[i].data());
     }
 
     // 2. 写 header/meta（此时 meta 已经同步）
-    gguf_write_to_file(ctx_out, fname_out.c_str(), true);
-    FILE * f_out = fopen(fname_out.c_str(), "r+b");
-    if (!f_out) {
+    // ---- llama.cpp 风格顺序写入 ----
+    size_t meta_size = gguf_get_meta_size(ctx_out);
+    std::ofstream fout(fname_out, std::ios::binary);
+    if (!fout) {
         fprintf(stderr, "Failed to open %s for writing tensor data\n", fname_out.c_str());
         gguf_free(ctx_in);
         ggml_free(ctx_meta);
         gguf_free(ctx_out);
         return 1;
     }
+    // 先写 meta_size 个 0 占位
+    std::vector<uint8_t> zeros(meta_size, 0);
+    fout.write(reinterpret_cast<const char*>(zeros.data()), meta_size);
+
     size_t total_size_orig = 0;
     size_t total_size_new = 0;
     for (int i = 0; i < n_tensors; ++i) {
@@ -207,14 +214,21 @@ int main(int argc, char **argv) {
         struct ggml_tensor * tensor = ggml_get_tensor(ctx_meta, name);
         size_t new_size = tensor_sizes[i];
         void * new_data = tensor_datas[i].data();
-        fseek(f_out, gguf_get_data_offset(ctx_out) + gguf_get_tensor_offset(ctx_out, i), SEEK_SET);
-        fwrite(new_data, 1, new_size, f_out);
+        fout.write(reinterpret_cast<const char*>(new_data), new_size);
         size_t pad = GGML_PAD(new_size, GGUF_DEFAULT_ALIGNMENT) - new_size;
-        if (pad > 0) { static char zeros[GGUF_DEFAULT_ALIGNMENT] = {0}; fwrite(zeros, 1, pad, f_out); }
+        if (pad > 0) {
+            std::vector<uint8_t> pad_zeros(pad, 0);
+            fout.write(reinterpret_cast<const char*>(pad_zeros.data()), pad);
+        }
         total_size_orig += ggml_nbytes(tensor);
         total_size_new += new_size;
     }
-    fclose(f_out);
+    // 写真正的 meta/header
+    fout.seekp(0);
+    std::vector<uint8_t> meta_buf(meta_size);
+    gguf_get_meta_data(ctx_out, meta_buf.data());
+    fout.write(reinterpret_cast<const char*>(meta_buf.data()), meta_size);
+    fout.close();
 
     printf("\nQuantization successful!\n");
     printf("Original model size: %.2f MB\n", total_size_orig / 1024.0 / 1024.0);
