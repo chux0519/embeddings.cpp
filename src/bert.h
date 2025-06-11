@@ -1,16 +1,6 @@
 #pragma once
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
 
-#include <cmath>
-#include <string>
-#include <vector>
-
-#include "ggml-alloc.h"
-#include "ggml-backend.h"
-#include "ggml.h"
-#include "tokenizer.h"
+#include "base_model.h"
 
 #define KEY_FTYPE "general.file_type"
 #define KEY_NAME "general.name"
@@ -22,32 +12,10 @@
 #define POOLING_METHOD_CLS 1
 
 namespace embeddings {
-struct BertConfig {
-  int32_t vocab_size;
-  int32_t max_position_embedding;
-  int32_t hidden_size;
-  int32_t intermediate_size;
-  int32_t num_attention_heads;
-  int32_t num_hidden_layers;
-  float_t layer_norm_eps;
-};
 
-class BackendContext {
- public:
-  // ggml context for weights
-  struct ggml_context *ctx_data = NULL;
-
-  // memory buffers to evaluate the model
-  ggml_backend_t backend = NULL;
-  ggml_backend_buffer_t weights_buffer = NULL;
-
-  // load tokens into here, to compute
-  struct ggml_context *compute_ctx = NULL;
-  ggml_backend_buffer_t compute_buffer = NULL;
-
-  // the compute graph for each forward process
-  struct ggml_context *compute_graph_ctx = NULL;
-  ggml_gallocr_t compute_allocr = NULL;
+struct BertConfig : public BaseConfig {
+  int32_t max_position_embedding = 0;
+  int32_t intermediate_size = 0;
 };
 
 struct BertEmbedding {
@@ -86,39 +54,28 @@ struct EncoderBlock {
   struct ggml_tensor *ln_out_b;
 };
 
-class BertModel {
+class BertModel : public BaseModel {
  public:
   BertModel(const std::string &);
   std::vector<float> Forward(const Encoding &, bool normalize = true,
-                             int pooling_method = 0);
+                             int pooling_method = 0) override;
   std::vector<std::vector<float>> BatchForward(const std::vector<Encoding> &,
                                                bool normalize = true,
-                                               int pooling_method = 0);
+                                               int pooling_method = 0) override;
+
+ protected:
+  struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
+                                 bool normalize = true, int pooling_method = 0) override;
 
  private:
-  struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
-                                 bool normalize = true, int pooling_method = 0);
-  void Clear();
-
-  std::string arch;
   BertConfig hparams;
-  BackendContext ctx;
-
   BertEmbedding embeddings;
   std::vector<EncoderBlock> layers;
 };
 
-class Embedding {
+class Embedding : public BaseEmbedding<BertModel> {
  public:
-  Embedding(const std::string &hf_token_json, const std::string &gguf_model);
-  std::vector<float> Encode(const std::string &, bool normalize = true,
-                            int pooling_method = 0);
-  std::vector<std::vector<float>> BatchEncode(const std::vector<std::string> &,
-                                              bool normalize = true,
-                                              int pooling_method = 0);
-
- private:
-  Tokenizer *tok;
-  BertModel *model;
+  Embedding(const std::string &hf_token_json, const std::string &gguf_model)
+      : BaseEmbedding<BertModel>(hf_token_json, gguf_model) {}
 };
 }  // namespace embeddings

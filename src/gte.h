@@ -7,17 +7,12 @@
 #include "ggml.h"
 #include "tokenizer.h"
 #include "utils.h"
-#include "bert.h" // 包含 BackendContext
+#include "base_model.h"
 
 namespace embeddings {
 
-struct GteBertConfig {
-  int vocab_size = 0;
-  int hidden_size = 0;
+struct GteBertConfig : public BaseConfig {
   int intermediate_size = 0;
-  int num_attention_heads = 0;
-  int num_hidden_layers = 0;
-  float layer_norm_eps = 0.0f;
   float rope_theta = 0.0f;
 };
 
@@ -45,50 +40,29 @@ struct GteBertEmbeddings {
   ggml_tensor *LayerNorm_b = nullptr;
 };
 
-struct GteBertModel {
+struct GteBertModel : public BaseModel {
   GteBertModel() = default;
   GteBertModel(const std::string &gguf_model);
 
   std::vector<float> Forward(const Encoding &enc, bool normalize,
-                                      int pooling_method);
+                                      int pooling_method) override;
   std::vector<std::vector<float>> BatchForward(
-      const std::vector<Encoding> &batch, bool normalize, int pooling_method);
+      const std::vector<Encoding> &batch, bool normalize, int pooling_method) override;
 
- private:
-  void Clear();
+ protected:
   struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
-                                          bool normalize, int pooling_method);
+                                          bool normalize, int pooling_method) override;
 
  public:
   GteBertConfig hparams;
   GteBertEmbeddings embeddings;
   std::vector<GteBertLayer> layers;
-  std::string arch;
-
- private:
-  BackendContext ctx;
-  ggml_tensor *get_tensor(ggml_context *ctx, const std::string &name) {
-    ggml_tensor *tensor = ggml_get_tensor(ctx, name.c_str());
-    if (!tensor) {
-      fprintf(stderr, "%s: tensor '%s' not found\n", __func__, name.c_str());
-      throw "";
-    }
-    return tensor;
-  }
 };
 
-struct GteEmbedding {
+struct GteEmbedding : public BaseEmbedding<GteBertModel> {
   GteEmbedding() = default;
-  GteEmbedding(const std::string &hf_token_json, const std::string &gguf_model);
-
-  std::vector<float> Encode(const std::string &text, bool normalize,
-                                     int pooling_method);
-  std::vector<std::vector<float>> BatchEncode(
-      const std::vector<std::string> &batch, bool normalize, int pooling_method);
-
- private:
-  Tokenizer *tok = nullptr;
-  GteBertModel *model = nullptr;
+  GteEmbedding(const std::string &hf_token_json, const std::string &gguf_model)
+      : BaseEmbedding<GteBertModel>(hf_token_json, gguf_model) {}
 };
 
 }  // namespace embeddings

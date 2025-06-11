@@ -322,59 +322,8 @@ std::vector<float> GteBertModel::Forward(const Encoding &enc, bool normalize,
 
 std::vector<std::vector<float>> GteBertModel::BatchForward(
     const std::vector<Encoding> &batch, bool normalize, int pooling_method) {
-  Clear();
-  // build compute graph
-  auto graph = BuildGraph(batch, normalize, pooling_method);
-
-  // alloc graph
-  ctx.compute_allocr =
-      ggml_gallocr_new(ggml_backend_get_default_buffer_type(ctx.backend));
-  ggml_gallocr_alloc_graph(ctx.compute_allocr, graph);
-
-  auto bufferss_size = ggml_gallocr_get_buffer_size(ctx.compute_allocr, 0);
-
-  printf("compute buffer size: %.2f MB\n", bufferss_size / 1024.0 / 1024.0);
-
-  ggml_backend_graph_compute(ctx.backend, graph);
-
-  std::vector<std::vector<float>> ret(batch.size(), std::vector<float>(0));
-
-  // in this example, output tensor is always the last tensor in the graph
-  auto result = ggml_graph_node(graph, -1);
-  float *result_data = (float *)malloc(ggml_nbytes(result));
-  // because the tensor data is stored in device buffer, we need to copy it
-  // / back / to RAM
-  ggml_backend_tensor_get(result, result_data, 0, ggml_nbytes(result));
-  for (int j = 0; j < result->ne[1] /* rows */; j++) {
-    std::vector<float> emb;
-    for (int i = 0; i < result->ne[0] /* cols */; i++) {
-      emb.push_back(result_data[j * result->ne[0] + i]);
-    }
-    ret[j] = emb;
-  }
-
-  Clear();
-
-  return ret;
-}
-
-void GteBertModel::Clear() {
-  if (ctx.compute_graph_ctx) {
-    ggml_free(ctx.compute_graph_ctx);
-    ctx.compute_graph_ctx = NULL;
-  }
-  if (ctx.compute_allocr) {
-    ggml_gallocr_free(ctx.compute_allocr);
-    ctx.compute_allocr = NULL;
-  }
-  if (ctx.compute_ctx) {
-    ggml_free(ctx.compute_ctx);
-    ctx.compute_ctx = NULL;
-  }
-  if (ctx.compute_buffer) {
-    ggml_backend_buffer_free(ctx.compute_buffer);
-    ctx.compute_buffer = NULL;
-  }
+  auto graph = CommonBatchForwardSetup(batch, normalize, pooling_method);
+  return ExtractResults(graph, batch.size(), hparams.hidden_size);
 }
 
 struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
@@ -549,25 +498,6 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
 
   ggml_build_forward_expand(gf, inpL);
   return gf;
-}
-
-GteEmbedding::GteEmbedding(const std::string &hf_token_json,
-                           const std::string &gguf_model) {
-  tok = new Tokenizer(hf_token_json);
-  model = new GteBertModel(gguf_model);
-}
-
-std::vector<float> GteEmbedding::Encode(const std::string &text, bool normalize,
-                                        int pooling_method) {
-  std::vector<std::string> batch = {text};
-  return BatchEncode(batch, normalize, pooling_method)[0];
-}
-
-std::vector<std::vector<float>> GteEmbedding::BatchEncode(
-    const std::vector<std::string> &batch, bool normalize, int pooling_method) {
-  auto encodings = tok->EncodeBatch(batch);
-  auto embeddings = model->BatchForward(encodings, normalize, pooling_method);
-  return embeddings;
 }
 
 }  // namespace embeddings

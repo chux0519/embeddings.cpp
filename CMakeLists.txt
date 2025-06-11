@@ -15,6 +15,7 @@ include_directories(hf_tokenizers/include)
 include_directories(src)
 
 set(EMBEDDING_SOURCES
+    src/base_model.cpp
     src/gte.cpp
     src/jina_bert.cpp
     src/bert.cpp
