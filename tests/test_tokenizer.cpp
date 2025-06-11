@@ -3,8 +3,8 @@
 #include <iostream>
 #include <vector>
 
-#include "../tokenizer.h"
-#include "../utils.h"
+#include "tokenizer.h"
+#include "utils.h"
 
 using namespace embeddings;
 

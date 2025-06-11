@@ -1,10 +1,10 @@
 #include <cstddef>
 #include <iostream>
 
-#include "../bert.h"
-#include "../jina_bert.h"
-#include "../gte.h"
-#include "../utils.h"
+#include "bert.h"
+#include "jina_bert.h"
+#include "gte.h"
+#include "utils.h"
 
 using namespace embeddings;
 
@@ -54,5 +54,5 @@ int main() {
   // TestEmbedding("models/bge-m3.tokenizer.json", "models/bge-m3.fp16.gguf", true,
   //               POOLING_METHOD_CLS);
   TestGteEmbedding("models/snowflake-arctic-embed-m-v2.0.tokenizer.json",
-                    "models/snowflake-arctic-embed-m-v2.0.fp16.gguf", true, POOLING_METHOD_CLS);
+                    "models/snowflake-arctic-embed-m-v2.0.q6_k.gguf", true, POOLING_METHOD_CLS);
 }
