@@ -56,19 +56,16 @@ struct EncoderBlock {
 
 class BertModel : public BaseModel {
  public:
-  BertModel(const std::string &);
-  std::vector<float> Forward(const Encoding &, bool normalize = true,
-                             int pooling_method = 0) override;
-  std::vector<std::vector<float>> BatchForward(const std::vector<Encoding> &,
-                                               bool normalize = true,
-                                               int pooling_method = 0) override;
+  BertModel(const std::string &gguf_model);
 
  protected:
   struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
-                                 bool normalize = true, int pooling_method = 0) override;
+                                 bool normalize = true,
+                                 int pooling_method = 0) override;
+  void LoadHyperparameters(struct gguf_context *ctx_gguf) override;
+  void LoadTensors() override;
 
  private:
-  BertConfig hparams;
   BertEmbedding embeddings;
   std::vector<EncoderBlock> layers;
 };

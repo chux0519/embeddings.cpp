@@ -41,18 +41,15 @@ struct JinaEncoderBlock {
 class JinaBertModel : public BaseModel {
  public:
   JinaBertModel(const std::string &);
-  std::vector<float> Forward(const Encoding &, bool normalize = true,
-                             int pooling_method = 0) override;
-  std::vector<std::vector<float>> BatchForward(const std::vector<Encoding> &,
-                                               bool normalize = true,
-                                               int pooling_method = 0) override;
 
  protected:
   struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
-                                 bool normalize = true, int pooling_method = 0) override;
+                                 bool normalize = true,
+                                 int pooling_method = 0) override;
+  void LoadHyperparameters(struct gguf_context *ctx_gguf) override;
+  void LoadTensors() override;
 
  private:
-  JinaBertConfig hparams;
   JinaBertEmbedding embeddings;
   std::vector<JinaEncoderBlock> layers;
 };

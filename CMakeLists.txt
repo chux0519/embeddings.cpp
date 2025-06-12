@@ -39,7 +39,7 @@ option(EMBEDDINGS_CPP_ENABLE_PYBIND "embeddings.cpp: enable python binding" OFF)
 if (EMBEDDINGS_CPP_ENABLE_PYBIND)
     set_target_properties(embeddings ggml tokenizers_cpp PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
     add_subdirectory(pybind11)
-    pybind11_add_module(_C pybind.cpp)
+    pybind11_add_module(_C src/pybind.cpp)
     target_link_libraries(_C PRIVATE embeddings)
 endif ()
 

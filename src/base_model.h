@@ -5,13 +5,14 @@
 #include <stdint.h>
 
 #include <cmath>
+#include <stdexcept>
 #include <string>
 #include <vector>
-#include <stdexcept>
 
 #include "ggml-alloc.h"
 #include "ggml-backend.h"
 #include "ggml.h"
+#include "gguf.h"
 #include "tokenizer.h"
 
 #define KEY_FTYPE "general.file_type"
@@ -25,21 +26,21 @@
 
 namespace embeddings {
 
-// 前向声明
+// Forward declaration
 struct Encoding;
 
-// 基础配置接口
+// Base configuration interface
 struct BaseConfig {
   int32_t vocab_size = 0;
   int32_t hidden_size = 0;
   int32_t num_hidden_layers = 0;
   int32_t num_attention_heads = 0;
   float layer_norm_eps = 1e-12f;
-  
+
   virtual ~BaseConfig() = default;
 };
 
-// 后端上下文 - 从 bert.h 移动到这里
+// Backend context
 class BackendContext {
  public:
   // ggml context for weights
@@ -58,46 +59,60 @@ class BackendContext {
   ggml_gallocr_t compute_allocr = NULL;
 };
 
-// 基础模型抽象类
+// Base model abstract class
 class BaseModel {
  public:
-  BaseModel() = default;
-  virtual ~BaseModel() = default;
+  // NEW: Constructor will trigger model loading
+  BaseModel(const std::string &gguf_model);
+  virtual ~BaseModel();
 
-  // 纯虚函数 - 子类必须实现
-  virtual std::vector<float> Forward(const Encoding &enc, bool normalize = true, 
-                                   int pooling_method = 0) = 0;
-  virtual std::vector<std::vector<float>> BatchForward(
-      const std::vector<Encoding> &batch, bool normalize = true, 
-      int pooling_method = 0) = 0;
+  void Load();
+  // NEW: Forward and BatchForward are no longer pure virtual functions, their implementations are generic
+  std::vector<float> Forward(const Encoding &enc, bool normalize = true,
+                             int pooling_method = POOLING_METHOD_MEAN);
+  std::vector<std::vector<float>> BatchForward(
+      const std::vector<Encoding> &batch, bool normalize = true,
+      int pooling_method = POOLING_METHOD_MEAN);
 
  protected:
-  // 受保护的虚函数 - 子类可以重写
+  // Pure virtual function - subclasses must implement
   virtual struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
-                                       bool normalize = true, 
-                                       int pooling_method = 0) = 0;
-  virtual void Clear();
-  virtual void InitializeBackend();
-  virtual void LoadModel(const std::string &gguf_model);
-  // 通用的辅助函数
-  ggml_tensor *get_tensor(ggml_context *ctx, const std::string &name);
-  struct ggml_cgraph* CommonBatchForwardSetup(const std::vector<Encoding> &batch, 
-                             bool normalize, int pooling_method);
-  std::vector<std::vector<float>> ExtractResults(struct ggml_cgraph *graph, 
-                                                int batch_size, int hidden_size);
+                                         bool normalize = true,
+                                         int pooling_method = 0) = 0;
 
-  // 成员变量
+  // NEW: New pure virtual functions, subclasses must implement to load their specific parts
+  virtual void LoadHyperparameters(struct gguf_context *ctx_gguf) = 0;
+  virtual void LoadTensors() = 0;
+
+  // Protected functions, implement common logic
+  void InitializeBackend();
+  void Clear();
+
+  struct ggml_cgraph *CommonBatchForwardSetup(
+      const std::vector<Encoding> &batch, bool normalize, int pooling_method);
+  std::vector<std::vector<float>> ExtractResults(struct ggml_cgraph *graph,
+                                                 int batch_size,
+                                                 int hidden_size);
+
+  // Member variables
+  std::string model_path;
   std::string arch;
+  BaseConfig *hparams = nullptr;  // NEW: Use base class pointer to store hparams
   BackendContext ctx;
+
+ private:
+  void LoadModelImpl(const std::string &gguf_model);
 };
 
-// 基础嵌入包装类
-template<typename ModelType>
+// Base embedding wrapper class
+template <typename ModelType>
 class BaseEmbedding {
  public:
-  BaseEmbedding(const std::string &hf_token_json, const std::string &gguf_model) {
+  BaseEmbedding(const std::string &hf_token_json,
+                const std::string &gguf_model) {
     tok = new Tokenizer(hf_token_json);
     model = new ModelType(gguf_model);
+    model->Load();
   }
 
   virtual ~BaseEmbedding() {
@@ -106,14 +121,14 @@ class BaseEmbedding {
   }
 
   std::vector<float> Encode(const std::string &text, bool normalize = true,
-                          int pooling_method = 0) {
+                            int pooling_method = 0) {
     std::vector<std::string> batch = {text};
     return BatchEncode(batch, normalize, pooling_method)[0];
   }
 
-  std::vector<std::vector<float>> BatchEncode(const std::vector<std::string> &batch,
-                                            bool normalize = true,
-                                            int pooling_method = 0) {
+  std::vector<std::vector<float>> BatchEncode(
+      const std::vector<std::string> &batch, bool normalize = true,
+      int pooling_method = 0) {
     auto encodings = tok->EncodeBatch(batch);
     auto embeddings = model->BatchForward(encodings, normalize, pooling_method);
     return embeddings;

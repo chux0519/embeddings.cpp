@@ -44,15 +44,6 @@ PYBIND11_MODULE(_C, m) {
       .def("batch_encode", &Embedding::BatchEncode,
            "Encodes a batch of strings into a list of float vectors.",
            "texts"_a, "normalize"_a = true, "pooling_method"_a = 0);
-  py::class_<JinaEmbedding>(m, "JinaEmbedding")
-      .def(py::init<const std::string &, const std::string &>(),
-           "hf_token_json"_a, "gguf_model"_a)
-      .def("encode", &JinaEmbedding::Encode,
-           "Encodes a single string into a vector of floats.", "text"_a,
-           "normalize"_a = true, "pooling_method"_a = 0)
-      .def("batch_encode", &JinaEmbedding::BatchEncode,
-           "Encodes a batch of strings into a list of float vectors.",
-           "texts"_a, "normalize"_a = true, "pooling_method"_a = 0);
 }
 
 }  // namespace embeddings

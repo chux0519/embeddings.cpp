@@ -15,262 +15,96 @@
 
 namespace embeddings {
 
-BertModel::BertModel(const std::string &gguf_model) {
-  struct ggml_context *ctx_ggml = NULL;
+BertModel::BertModel(const std::string &gguf_model) : BaseModel(gguf_model) {}
 
-  struct gguf_init_params gguf_params = {
-      /*.no_alloc = */ true,
-      /*.ctx      = */ &ctx_ggml,
-  };
+// NEW: Implement LoadHyperparameters, containing only model-specific loading logic
+void BertModel::LoadHyperparameters(struct gguf_context *ctx_gguf) {
+  auto params = new BertConfig();
 
-  // open gguf file
-  struct gguf_context *ctx_gguf =
-      gguf_init_from_file(gguf_model.c_str(), gguf_params);
-  if (!ctx_gguf) {
-    fprintf(stderr,
-            "%s: failed to load BERT model from %s. Does this file exist?\n",
-            __func__, gguf_model.c_str());
-    return;
-  }
+  params->vocab_size = get_u32(ctx_gguf, "vocab_size");
+  params->max_position_embedding = get_u32(ctx_gguf, "max_position_embedding");
+  params->hidden_size = get_u32(ctx_gguf, "hidden_size");
+  params->intermediate_size = get_u32(ctx_gguf, "intermediate_size");
+  params->num_attention_heads = get_u32(ctx_gguf, "num_attention_heads");
+  params->num_hidden_layers = get_u32(ctx_gguf, "num_hidden_layers");
+  params->layer_norm_eps = get_f32(ctx_gguf, "layer_norm_eps");
 
-  // get generic model info
-  const int n_tensors = gguf_get_n_tensors(ctx_gguf);
-  const int n_kv = gguf_get_n_kv(ctx_gguf);
-  const int ftype = get_u32(ctx_gguf, KEY_FTYPE);
-  const int alignment = gguf_get_alignment(ctx_gguf);
-  const int version = gguf_get_version(ctx_gguf);
-  const std::string ftype_str = get_ftype(ftype);
-  const std::string description = get_str(ctx_gguf, KEY_DESCRIPTION);
-  const std::string name = get_str(ctx_gguf, KEY_NAME);
-  arch = get_str(ctx_gguf, KEY_ARCHITECTURE);
+  // Assign to the base class's hparams pointer
+  this->hparams = params;
 
+  // Print information
+  fprintf(stderr, "%s: vocab_size        = %d\n", __func__, params->vocab_size);
+  fprintf(stderr, "%s: max_position_embedding   = %d\n", __func__,
+          params->max_position_embedding);
+  fprintf(stderr, "%s: hidden_size         = %d\n", __func__,
+          params->hidden_size);
+  fprintf(stderr, "%s: num_hidden_layers   = %d\n", __func__,
+          params->num_hidden_layers);
   fprintf(stderr, "\n");
-  fprintf(stderr, "%s: GGUF\n", __func__);
-  fprintf(stderr, "%s: model name:   %s\n", __func__, name.c_str());
-  fprintf(stderr, "%s: architecture:   %s\n", __func__, arch.c_str());
-  fprintf(stderr, "%s: description:  %s\n", __func__, description.c_str());
-  fprintf(stderr, "%s: GGUF version: %d\n", __func__, version);
-  fprintf(stderr, "%s: alignment:    %d\n", __func__, alignment);
-  fprintf(stderr, "%s: n_tensors:    %d\n", __func__, n_tensors);
-  fprintf(stderr, "%s: n_kv:         %d\n", __func__, n_kv);
-  fprintf(stderr, "%s: ftype:        %s\n", __func__, ftype_str.c_str());
-  fprintf(stderr, "\n");
-
-  hparams = BertConfig();
-  // load hparams
-  {
-    hparams.vocab_size = get_u32(ctx_gguf, "vocab_size");
-    hparams.max_position_embedding =
-        get_u32(ctx_gguf, "max_position_embedding");
-    hparams.hidden_size = get_u32(ctx_gguf, "hidden_size");
-    hparams.intermediate_size = get_u32(ctx_gguf, "intermediate_size");
-    hparams.num_attention_heads = get_u32(ctx_gguf, "num_attention_heads");
-    hparams.num_hidden_layers = get_u32(ctx_gguf, "num_hidden_layers");
-    hparams.layer_norm_eps = get_f32(ctx_gguf, "layer_norm_eps");
-
-    fprintf(stderr, "%s: MODEL\n", __func__);
-    fprintf(stderr, "%s: vocab_size        = %d\n", __func__,
-            hparams.vocab_size);
-    fprintf(stderr, "%s: max_position_embedding   = %d\n", __func__,
-            hparams.max_position_embedding);
-    fprintf(stderr, "%s: hidden_size         = %d\n", __func__,
-            hparams.hidden_size);
-    fprintf(stderr, "%s: intermediate_size = %d\n", __func__,
-            hparams.intermediate_size);
-    fprintf(stderr, "%s: num_attention_heads         = %d\n", __func__,
-            hparams.num_attention_heads);
-    fprintf(stderr, "%s: num_hidden_layers        = %d\n", __func__,
-            hparams.num_hidden_layers);
-    fprintf(stderr, "%s: layer_norm_eps = %g\n", __func__,
-            hparams.layer_norm_eps);
-    fprintf(stderr, "\n");
-  }
-
-  // init backend
-#ifdef GGML_USE_METAL
-  fprintf(stderr, "%s: using Metal backend\n", __func__);
-  ctx.backend = ggml_backend_metal_init();
-  if (!ctx.backend) {
-    fprintf(stderr, "%s: ggml_backend_metal_init() failed\n", __func__);
-  }
-#endif
-#ifdef GGML_USE_VULKAN
-  fprintf(stderr, "%s: using Vulkan backend\n", __func__);
-  ctx.backend = ggml_backend_vk_init(0);
-  if (!ctx.backend) {
-    fprintf(stderr, "%s: ggml_backend_vulkan_init() failed\n", __func__);
-  }
-#endif
-
-  // if there aren't GPU Backends fallback to CPU backend
-  if (!ctx.backend) {
-    fprintf(stderr, "%s: using CPU backend\n", __func__);
-    ctx.backend = ggml_backend_cpu_init();
-  }
-
-  // model tensor sizing
-  size_t buffer_size = 32 * 1024;  // TODO: need some extra room??
-  {
-    for (int i = 0; i < n_tensors; ++i) {
-      const char *name = gguf_get_tensor_name(ctx_gguf, i);
-      const size_t offset = gguf_get_tensor_offset(ctx_gguf, i);
-      struct ggml_tensor *cur = ggml_get_tensor(ctx_ggml, name);
-      size_t tensor_size = ggml_nbytes(cur);
-      buffer_size += tensor_size;
-
-      fprintf(stderr,
-              "%s: tensor[%d]: type = %s, n_dims = %d, name = %s, offset=%zu, "
-              "type=%d\n",
-              __func__, i, ggml_type_name(cur->type), ggml_n_dims(cur),
-              cur->name, offset, cur->type);
-    }
-  }
-
-  // load tensors
-  {
-    // host buffer for CUDA loading
-    std::vector<uint8_t> read_buf;
-
-    // context params for tensors
-    struct ggml_init_params ggml_params = {
-        /*.mem_size =*/(n_tensors + 1) * ggml_tensor_overhead(),
-        /*.mem_buffer =*/NULL,
-        /*.no_alloc =*/true,
-    };
-
-    // create context for tensors
-    ctx.ctx_data = ggml_init(ggml_params);
-    if (!ctx.ctx_data) {
-      fprintf(stderr, "%s: ggml_init() failed\n", __func__);
-      throw "";
-    }
-
-    // open model gguf file
-    auto fin = std::ifstream(gguf_model, std::ios::binary);
-    if (!fin) {
-      fprintf(stderr, "cannot open model file for loading tensors\n");
-      throw "";
-    }
-
-    // add tensors to our context
-    for (int i = 0; i < n_tensors; ++i) {
-      const char *name = gguf_get_tensor_name(ctx_gguf, i);
-      struct ggml_tensor *ten = ggml_get_tensor(ctx_ggml, name);
-      struct ggml_tensor *cur = ggml_dup_tensor(ctx.ctx_data, ten);
-      ggml_set_name(cur, name);
-    }
-
-    // create params buffer and allocr
-    ctx.weights_buffer = ggml_backend_alloc_buffer(ctx.backend, buffer_size);
-    auto alloc = ggml_tallocr_new(ctx.weights_buffer);
-
-    // loop over tensors and load in
-    for (int i = 0; i < n_tensors; ++i) {
-      // do the actual allocation on the backend
-      const char *name = gguf_get_tensor_name(ctx_gguf, i);
-      struct ggml_tensor *cur = ggml_get_tensor(ctx.ctx_data, name);
-      ggml_tallocr_alloc(&alloc, cur);
-
-      // seek to the tensor data in the file
-      const size_t offset =
-          gguf_get_data_offset(ctx_gguf) + gguf_get_tensor_offset(ctx_gguf, i);
-      fin.seekg(offset, std::ios::beg);
-      if (!fin) {
-        fprintf(stderr, "%s: failed to seek for tensor %s\n", __func__, name);
-        throw "";
-      }
-
-      // read in data and copy to device if needed
-      int num_bytes = ggml_nbytes(cur);
-      if (ggml_backend_buffer_is_host(ctx.weights_buffer)) {
-        // for the CPU and Metal backend, we can read directly into the tensor
-        fin.read(reinterpret_cast<char *>(cur->data), num_bytes);
-      } else {
-        // read into a temporary buffer first, then copy to device memory
-        read_buf.resize(num_bytes);
-        fin.read(reinterpret_cast<char *>(read_buf.data()), num_bytes);
-        ggml_backend_tensor_set(cur, read_buf.data(), 0, num_bytes);
-      }
-    }
-  }
-
-  // use get_tensors to populate bert_model
-  {
-    // embeddings weights
-    embeddings.word_embeddings =
-        get_tensor(ctx.ctx_data, "embeddings.word_embeddings.weight");
-    embeddings.token_type_embeddings =
-        get_tensor(ctx.ctx_data, "embeddings.token_type_embeddings.weight");
-    embeddings.position_embeddings =
-        get_tensor(ctx.ctx_data, "embeddings.position_embeddings.weight");
-    embeddings.ln_e_w = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.weight");
-    embeddings.ln_e_b = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.bias");
-
-    // pooler
-    embeddings.pooler_e_w = get_tensor(ctx.ctx_data, "pooler.dense.weight");
-    embeddings.pooler_e_b = get_tensor(ctx.ctx_data, "pooler.dense.bias");
-
-    // layers
-    layers.resize(hparams.num_hidden_layers);
-    for (int i = 0; i < hparams.num_hidden_layers; ++i) {
-      auto &layer = layers[i];
-      std::string pre = "encoder.layer." + std::to_string(i) + ".";
-
-      // attention
-      layer.q_w = get_tensor(ctx.ctx_data, pre + "attention.self.query.weight");
-      layer.q_b = get_tensor(ctx.ctx_data, pre + "attention.self.query.bias");
-      layer.k_w = get_tensor(ctx.ctx_data, pre + "attention.self.key.weight");
-      layer.k_b = get_tensor(ctx.ctx_data, pre + "attention.self.key.bias");
-      layer.v_w = get_tensor(ctx.ctx_data, pre + "attention.self.value.weight");
-      layer.v_b = get_tensor(ctx.ctx_data, pre + "attention.self.value.bias");
-
-      layer.o_w =
-          get_tensor(ctx.ctx_data, pre + "attention.output.dense.weight");
-      layer.o_b = get_tensor(ctx.ctx_data, pre + "attention.output.dense.bias");
-
-      layer.ln_att_w =
-          get_tensor(ctx.ctx_data, pre + "attention.output.LayerNorm.weight");
-      layer.ln_att_b =
-          get_tensor(ctx.ctx_data, pre + "attention.output.LayerNorm.bias");
-
-      // ff
-      layer.ff_i_w =
-          get_tensor(ctx.ctx_data, pre + "intermediate.dense.weight");
-      layer.ff_i_b = get_tensor(ctx.ctx_data, pre + "intermediate.dense.bias");
-
-      layer.ff_o_w = get_tensor(ctx.ctx_data, pre + "output.dense.weight");
-      layer.ff_o_b = get_tensor(ctx.ctx_data, pre + "output.dense.bias");
-
-      layer.ln_out_w =
-          get_tensor(ctx.ctx_data, pre + "output.LayerNorm.weight");
-      layer.ln_out_b = get_tensor(ctx.ctx_data, pre + "output.LayerNorm.bias");
-    }
-  }
-  // free metadata
-  ggml_free(ctx_ggml);
-  gguf_free(ctx_gguf);
 }
 
-std::vector<float> BertModel::Forward(const Encoding &enc, bool normalize,
-                                      int pooling_method) {
-  std::vector<Encoding> batch = {enc};
-  return BatchForward(batch, pooling_method)[0];
-}
+void BertModel::LoadTensors() {
+  // embeddings weights
+  embeddings.word_embeddings =
+      get_tensor(ctx.ctx_data, "embeddings.word_embeddings.weight");
+  embeddings.token_type_embeddings =
+      get_tensor(ctx.ctx_data, "embeddings.token_type_embeddings.weight");
+  embeddings.position_embeddings =
+      get_tensor(ctx.ctx_data, "embeddings.position_embeddings.weight");
+  embeddings.ln_e_w = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.weight");
+  embeddings.ln_e_b = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.bias");
 
-std::vector<std::vector<float>> BertModel::BatchForward(
-    const std::vector<Encoding> &batch, bool normalize, int pooling_method) {
-  auto graph = CommonBatchForwardSetup(batch, normalize, pooling_method);
-  return ExtractResults(graph, batch.size(), hparams.hidden_size);
+  // pooler
+  embeddings.pooler_e_w = get_tensor(ctx.ctx_data, "pooler.dense.weight");
+  embeddings.pooler_e_b = get_tensor(ctx.ctx_data, "pooler.dense.bias");
+
+  // layers
+  layers.resize(hparams->num_hidden_layers);
+  for (int i = 0; i < hparams->num_hidden_layers; ++i) {
+    auto &layer = layers[i];
+    std::string pre = "encoder.layer." + std::to_string(i) + ".";
+
+    // attention
+    layer.q_w = get_tensor(ctx.ctx_data, pre + "attention.self.query.weight");
+    layer.q_b = get_tensor(ctx.ctx_data, pre + "attention.self.query.bias");
+    layer.k_w = get_tensor(ctx.ctx_data, pre + "attention.self.key.weight");
+    layer.k_b = get_tensor(ctx.ctx_data, pre + "attention.self.key.bias");
+    layer.v_w = get_tensor(ctx.ctx_data, pre + "attention.self.value.weight");
+    layer.v_b = get_tensor(ctx.ctx_data, pre + "attention.self.value.bias");
+
+    layer.o_w = get_tensor(ctx.ctx_data, pre + "attention.output.dense.weight");
+    layer.o_b = get_tensor(ctx.ctx_data, pre + "attention.output.dense.bias");
+
+    layer.ln_att_w =
+        get_tensor(ctx.ctx_data, pre + "attention.output.LayerNorm.weight");
+    layer.ln_att_b =
+        get_tensor(ctx.ctx_data, pre + "attention.output.LayerNorm.bias");
+
+    // ff
+    layer.ff_i_w = get_tensor(ctx.ctx_data, pre + "intermediate.dense.weight");
+    layer.ff_i_b = get_tensor(ctx.ctx_data, pre + "intermediate.dense.bias");
+
+    layer.ff_o_w = get_tensor(ctx.ctx_data, pre + "output.dense.weight");
+    layer.ff_o_b = get_tensor(ctx.ctx_data, pre + "output.dense.bias");
+
+    layer.ln_out_w = get_tensor(ctx.ctx_data, pre + "output.LayerNorm.weight");
+    layer.ln_out_b = get_tensor(ctx.ctx_data, pre + "output.LayerNorm.bias");
+  }
 }
 
 struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
                                           bool normalize, int pooling_method) {
+  // Safely cast from base class pointer back to derived class config type
+  auto bert_hparams = dynamic_cast<BertConfig *>(this->hparams);
+  if (!bert_hparams) {
+    throw std::runtime_error("Incorrect hparams type for BertModel");
+  }
   // extract model params
-  const int n_embd = hparams.hidden_size;
-  const int n_layer = hparams.num_hidden_layers;
-  const int n_max_tokens = hparams.max_position_embedding;
-  const int n_head = hparams.num_attention_heads;
-  const float layer_norm_eps = hparams.layer_norm_eps;
+  const int n_embd = bert_hparams->hidden_size;
+  const int n_layer = bert_hparams->num_hidden_layers;
+  const int n_max_tokens = bert_hparams->max_position_embedding;
+  const int n_head = bert_hparams->num_attention_heads;
+  const float layer_norm_eps = bert_hparams->layer_norm_eps;
   const int d_head = n_embd / n_head;  // E = D * H
 
   int n_batch_size = batch.size();           // B

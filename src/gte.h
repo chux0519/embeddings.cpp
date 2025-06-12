@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 
+#include "base_model.h"
 #include "ggml.h"
 #include "tokenizer.h"
 #include "utils.h"
-#include "base_model.h"
 
 namespace embeddings {
 
@@ -41,20 +41,15 @@ struct GteBertEmbeddings {
 };
 
 struct GteBertModel : public BaseModel {
-  GteBertModel() = default;
   GteBertModel(const std::string &gguf_model);
-
-  std::vector<float> Forward(const Encoding &enc, bool normalize,
-                                      int pooling_method) override;
-  std::vector<std::vector<float>> BatchForward(
-      const std::vector<Encoding> &batch, bool normalize, int pooling_method) override;
 
  protected:
   struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
-                                          bool normalize, int pooling_method) override;
+                                 bool normalize, int pooling_method) override;
+  void LoadHyperparameters(struct gguf_context *ctx_gguf) override;
+  void LoadTensors() override;
 
  public:
-  GteBertConfig hparams;
   GteBertEmbeddings embeddings;
   std::vector<GteBertLayer> layers;
 };
