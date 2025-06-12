@@ -17,25 +17,27 @@ namespace embeddings {
 
 BertModel::BertModel(const std::string &gguf_model) : BaseModel(gguf_model) {}
 
-// NEW: Implement LoadHyperparameters, containing only model-specific loading logic
+// NEW: Implement LoadHyperparameters, containing only model-specific loading
+// logic
 void BertModel::LoadHyperparameters(struct gguf_context *ctx_gguf) {
   auto params = new BertConfig();
 
-  params->vocab_size = get_u32(ctx_gguf, "vocab_size");
-  params->max_position_embedding = get_u32(ctx_gguf, "max_position_embedding");
-  params->hidden_size = get_u32(ctx_gguf, "hidden_size");
-  params->intermediate_size = get_u32(ctx_gguf, "intermediate_size");
-  params->num_attention_heads = get_u32(ctx_gguf, "num_attention_heads");
-  params->num_hidden_layers = get_u32(ctx_gguf, "num_hidden_layers");
-  params->layer_norm_eps = get_f32(ctx_gguf, "layer_norm_eps");
+  params->vocab_size = get_u32(ctx_gguf, KEY_VOCAB_SIZE);
+  params->max_position_embeddings =
+      get_u32(ctx_gguf, KEY_MAX_POSITION_EMBEDDING);
+  params->hidden_size = get_u32(ctx_gguf, KEY_HIDDEN_SIZE);
+  params->intermediate_size = get_u32(ctx_gguf, KEY_INTERMEDIATE_SIZE);
+  params->num_attention_heads = get_u32(ctx_gguf, KEY_NUM_ATTENTION_HEADS);
+  params->num_hidden_layers = get_u32(ctx_gguf, KEY_NUM_HIDDEN_LAYERS);
+  params->layer_norm_eps = get_f32(ctx_gguf, KEY_LAYER_NORM_EPS);
 
   // Assign to the base class's hparams pointer
   this->hparams = params;
 
   // Print information
   fprintf(stderr, "%s: vocab_size        = %d\n", __func__, params->vocab_size);
-  fprintf(stderr, "%s: max_position_embedding   = %d\n", __func__,
-          params->max_position_embedding);
+  fprintf(stderr, "%s: max_position_embeddings   = %d\n", __func__,
+          params->max_position_embeddings);
   fprintf(stderr, "%s: hidden_size         = %d\n", __func__,
           params->hidden_size);
   fprintf(stderr, "%s: num_hidden_layers   = %d\n", __func__,
@@ -93,7 +95,8 @@ void BertModel::LoadTensors() {
 }
 
 struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
-                                          bool normalize, int pooling_method) {
+                                          bool normalize,
+                                          PoolingMethod pooling_method) {
   // Safely cast from base class pointer back to derived class config type
   auto bert_hparams = dynamic_cast<BertConfig *>(this->hparams);
   if (!bert_hparams) {
@@ -102,7 +105,7 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
   // extract model params
   const int n_embd = bert_hparams->hidden_size;
   const int n_layer = bert_hparams->num_hidden_layers;
-  const int n_max_tokens = bert_hparams->max_position_embedding;
+  const int n_max_tokens = bert_hparams->max_position_embeddings;
   const int n_head = bert_hparams->num_attention_heads;
   const float layer_norm_eps = bert_hparams->layer_norm_eps;
   const int d_head = n_embd / n_head;  // E = D * H
@@ -157,11 +160,11 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
       token_layer_data[ba * cur_batch_size + i] = batch[ba].ids[i];
       pad_mask_data[ba * cur_batch_size + i] =
           static_cast<float>(batch[ba].attention_mask[i]);
-      if (pooling_method == POOLING_METHOD_CLS) {
+      if (pooling_method == PoolingMethod::CLS) {
         // [CLS] is the first token, we only need the first one, for the later
         // mulmat
         pooler_data[ba * cur_batch_size + i] = (i == 0 ? 1 : 0);
-      } else if (pooling_method == POOLING_METHOD_MEAN) {
+      } else if (pooling_method == PoolingMethod::MEAN) {
         // default to use mean pooling
         pooler_data[ba * cur_batch_size + i] =
             (i < batch[ba].no_pad_len

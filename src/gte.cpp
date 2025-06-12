@@ -97,12 +97,13 @@ GteBertModel::GteBertModel(const std::string &gguf_model)
 void GteBertModel::LoadHyperparameters(struct gguf_context *ctx_gguf) {
   auto hparams = new GteBertConfig();
   // load hparams
-  hparams->vocab_size = get_u32(ctx_gguf, "vocab_size");
-  hparams->hidden_size = get_u32(ctx_gguf, "hidden_size");
-  hparams->intermediate_size = get_u32(ctx_gguf, "intermediate_size");
-  hparams->num_attention_heads = get_u32(ctx_gguf, "num_attention_heads");
-  hparams->num_hidden_layers = get_u32(ctx_gguf, "num_hidden_layers");
-  hparams->layer_norm_eps = get_f32(ctx_gguf, "layer_norm_eps");
+  hparams->vocab_size = get_u32(ctx_gguf, KEY_VOCAB_SIZE);
+  hparams->max_position_embeddings = get_u32(ctx_gguf, KEY_MAX_POSITION_EMBEDDING);
+  hparams->hidden_size = get_u32(ctx_gguf, KEY_HIDDEN_SIZE);
+  hparams->intermediate_size = get_u32(ctx_gguf, KEY_INTERMEDIATE_SIZE);
+  hparams->num_attention_heads = get_u32(ctx_gguf, KEY_NUM_ATTENTION_HEADS);
+  hparams->num_hidden_layers = get_u32(ctx_gguf, KEY_NUM_HIDDEN_LAYERS);
+  hparams->layer_norm_eps = get_f32(ctx_gguf, KEY_LAYER_NORM_EPS);
   hparams->rope_theta = get_f32(ctx_gguf, "rope_theta");
 
   this->hparams = hparams;
@@ -164,7 +165,7 @@ void GteBertModel::LoadTensors() {
 
 struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
                                              bool normalize,
-                                             int pooling_method) {
+                                             PoolingMethod pooling_method) {
   auto gte_hparams = dynamic_cast<GteBertConfig *>(this->hparams);
   if (!gte_hparams) {
     throw std::runtime_error("Incorrect hparams type for BertModel");
@@ -173,6 +174,7 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
   const int n_layer = gte_hparams->num_hidden_layers;
   const int n_head = gte_hparams->num_attention_heads;
   const float layer_norm_eps = gte_hparams->layer_norm_eps;
+  const int max_position_embeddings = gte_hparams->max_position_embeddings;
   const int d_head = n_embd / n_head;
 
   const int B = batch.size();
@@ -200,7 +202,6 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
       ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, B * L);
   struct ggml_tensor *pool =
       ggml_new_tensor_3d(ctx.compute_ctx, GGML_TYPE_F32, L, 1, B);
-  int max_position_embeddings = 8192;
   struct ggml_tensor *pos =
       ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, L);
   struct ggml_tensor *rope_cos =
@@ -233,7 +234,7 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
   for (int b = 0; b < B; ++b) {
     for (int i = 0; i < L; ++i) {
       out_mask[b * L + i] =
-          pooling_method == POOLING_METHOD_CLS ? (i == 0 ? 1.f : 0.f) : 1.f / L;
+          pooling_method == PoolingMethod::CLS ? (i == 0 ? 1.f : 0.f) : 1.f / L;
     }
   }
   ggml_backend_tensor_set(pool, out_mask, 0, sizeof(float) * B * L);

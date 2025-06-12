@@ -10,6 +10,7 @@
 #include "gguf.h"
 #include "gguf_utils.h"  // Header file we created earlier
 #include "utils.h"       // Your get_u32, get_f32, etc. functions
+#include "constants.h"
 
 // Helper function borrowed from llama.cpp to copy kv pairs from one gguf context to another
 void gguf_kv_set_from_ctx(gguf_context *ctx_out, gguf_context *ctx_in, int i) {
@@ -123,14 +124,14 @@ int main(int argc, char **argv) {
   for (int i = 0; i < n_kv; ++i) {
     const char *key = gguf_get_key(ctx_in, i);
     // Update file type
-    if (strcmp(key, "general.file_type") == 0) {
+    if (strcmp(key, KEY_FTYPE) == 0) {
       gguf_set_val_u32(ctx_out, key, out_type);
     } else {
       gguf_kv_set_from_ctx(ctx_out, ctx_in, i);
     }
   }
   // Add quantization version
-  gguf_set_val_u32(ctx_out, "general.quantization_version", GGML_QNT_VERSION);
+  gguf_set_val_u32(ctx_out, KEY_QVERSION, GGML_QNT_VERSION);
 
   // Open input file to read tensor data
   FILE *f_in = fopen(fname_inp.c_str(), "rb");

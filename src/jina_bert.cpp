@@ -80,17 +80,17 @@ JinaBertModel::JinaBertModel(const std::string &gguf_model)
 void JinaBertModel::LoadHyperparameters(struct gguf_context *ctx_gguf) {
   auto hparams = new JinaBertConfig();
 
-  hparams->vocab_size = get_u32(ctx_gguf, "vocab_size");
-  hparams->hidden_size = get_u32(ctx_gguf, "hidden_size");
-  hparams->num_hidden_layers = get_u32(ctx_gguf, "num_hidden_layers");
-  hparams->num_attention_heads = get_u32(ctx_gguf, "num_attention_heads");
-  hparams->intermediate_size = get_u32(ctx_gguf, "intermediate_size");
-  hparams->type_vocab_size = get_u32(ctx_gguf, "type_vocab_size");
-  hparams->pad_token_id = get_u32(ctx_gguf, "pad_token_id");
-  hparams->layer_norm_eps = get_f32(ctx_gguf, "layer_norm_eps");
+  hparams->vocab_size = get_u32(ctx_gguf, KEY_VOCAB_SIZE);
+  hparams->hidden_size = get_u32(ctx_gguf, KEY_HIDDEN_SIZE);
+  hparams->num_hidden_layers = get_u32(ctx_gguf, KEY_NUM_HIDDEN_LAYERS);
+  hparams->num_attention_heads = get_u32(ctx_gguf, KEY_NUM_ATTENTION_HEADS);
+  hparams->intermediate_size = get_u32(ctx_gguf, KEY_INTERMEDIATE_SIZE);
+  hparams->type_vocab_size = get_u32(ctx_gguf, KEY_TYPE_VOCAB_SIZE);
+  hparams->pad_token_id = get_u32(ctx_gguf, KEY_PAD_TOKEN_ID);
+  hparams->layer_norm_eps = get_f32(ctx_gguf, KEY_LAYER_NORM_EPS);
 
   this->hparams = hparams;
-
+  
   fprintf(stderr, "%s: MODEL\n", __func__);
   fprintf(stderr, "%s: vocab_size        = %d\n", __func__,
           hparams->vocab_size);
@@ -148,7 +148,8 @@ void JinaBertModel::LoadTensors() {
 }
 
 struct ggml_cgraph *JinaBertModel::BuildGraph(
-    const std::vector<Encoding> &batch, bool normalize, int pooling_method) {
+    const std::vector<Encoding> &batch, bool normalize,
+    PoolingMethod pooling_method) {
   auto jina_hparams = dynamic_cast<JinaBertConfig *>(this->hparams);
   if (!jina_hparams) {
     throw std::runtime_error("Incorrect hparams type for JinaBertModel");
@@ -210,11 +211,11 @@ struct ggml_cgraph *JinaBertModel::BuildGraph(
       token_layer_data[ba * cur_batch_size + i] = batch[ba].ids[i];
       pad_mask_data[ba * cur_batch_size + i] =
           static_cast<float>(batch[ba].attention_mask[i]);
-      if (pooling_method == POOLING_METHOD_CLS) {
+      if (pooling_method == PoolingMethod::CLS) {
         // [CLS] is the first token, we only need the first one, for the later
         // mulmat
         pooler_data[ba * cur_batch_size + i] = (i == 0 ? 1 : 0);
-      } else if (pooling_method == POOLING_METHOD_MEAN) {
+      } else if (pooling_method == PoolingMethod::MEAN) {
         // default to use mean pooling
         pooler_data[ba * cur_batch_size + i] =
             (i < batch[ba].no_pad_len

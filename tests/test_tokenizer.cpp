@@ -15,8 +15,8 @@ void TestTokenizer(const std::string &tokenizer_file) {
     std::cout << atk.content << ": " << atk.id << std::endl;
   }
   // Check #1. Encode and Decode
-  std::vector<std::string> prompts = {"你好，今天天气怎么样？",
-                                      "What's the weather like today?", "A blue cat"};
+  std::vector<std::string> prompts = {
+      "你好，今天天气怎么样？", "What's the weather like today?", "A blue cat"};
   auto res = tok.EncodeBatch(prompts);
   for (size_t i = 0; i < res.size(); ++i) {
     auto encoding = res[i];

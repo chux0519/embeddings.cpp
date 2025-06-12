@@ -21,6 +21,7 @@ set(EMBEDDING_SOURCES
     src/bert.cpp
     src/tokenizer.cpp
     src/utils.cpp
+    src/factory.cpp
 )
 add_library(embeddings STATIC ${EMBEDDING_SOURCES})
 target_link_libraries(embeddings PUBLIC ggml tokenizers_cpp)

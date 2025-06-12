@@ -43,9 +43,9 @@ class JinaBertModel : public BaseModel {
   JinaBertModel(const std::string &);
 
  protected:
-  struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
-                                 bool normalize = true,
-                                 int pooling_method = 0) override;
+  struct ggml_cgraph *BuildGraph(
+      const std::vector<Encoding> &batch, bool normalize = true,
+      PoolingMethod pooling_method = PoolingMethod::MEAN) override;
   void LoadHyperparameters(struct gguf_context *ctx_gguf) override;
   void LoadTensors() override;
 

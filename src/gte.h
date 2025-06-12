@@ -12,7 +12,8 @@
 namespace embeddings {
 
 struct GteBertConfig : public BaseConfig {
-  int intermediate_size = 0;
+  int32_t max_position_embeddings = 0;
+  int32_t intermediate_size = 0;
   float rope_theta = 0.0f;
 };
 
@@ -44,8 +45,9 @@ struct GteBertModel : public BaseModel {
   GteBertModel(const std::string &gguf_model);
 
  protected:
-  struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
-                                 bool normalize, int pooling_method) override;
+  struct ggml_cgraph *BuildGraph(
+      const std::vector<Encoding> &batch, bool normalize,
+      PoolingMethod pooling_method = PoolingMethod::MEAN) override;
   void LoadHyperparameters(struct gguf_context *ctx_gguf) override;
   void LoadTensors() override;
 

@@ -2,19 +2,10 @@
 
 #include "base_model.h"
 
-#define KEY_FTYPE "general.file_type"
-#define KEY_NAME "general.name"
-#define KEY_DESCRIPTION "general.description"
-#define KEY_ARCHITECTURE "general.architecture"
-#define ARCH_XLMROBERTA "XLMRobertaModel"
-
-#define POOLING_METHOD_MEAN 0
-#define POOLING_METHOD_CLS 1
-
 namespace embeddings {
 
 struct BertConfig : public BaseConfig {
-  int32_t max_position_embedding = 0;
+  int32_t max_position_embeddings = 0;
   int32_t intermediate_size = 0;
 };
 
@@ -59,9 +50,9 @@ class BertModel : public BaseModel {
   BertModel(const std::string &gguf_model);
 
  protected:
-  struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
-                                 bool normalize = true,
-                                 int pooling_method = 0) override;
+  struct ggml_cgraph *BuildGraph(
+      const std::vector<Encoding> &batch, bool normalize = true,
+      PoolingMethod pooling_method = PoolingMethod::MEAN) override;
   void LoadHyperparameters(struct gguf_context *ctx_gguf) override;
   void LoadTensors() override;
 

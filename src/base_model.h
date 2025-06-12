@@ -14,18 +14,9 @@
 #include "ggml.h"
 #include "gguf.h"
 #include "tokenizer.h"
-
-#define KEY_FTYPE "general.file_type"
-#define KEY_NAME "general.name"
-#define KEY_DESCRIPTION "general.description"
-#define KEY_ARCHITECTURE "general.architecture"
-#define ARCH_XLMROBERTA "XLMRobertaModel"
-
-#define POOLING_METHOD_MEAN 0
-#define POOLING_METHOD_CLS 1
+#include "constants.h"
 
 namespace embeddings {
-
 // Forward declaration
 struct Encoding;
 
@@ -59,6 +50,8 @@ class BackendContext {
   ggml_gallocr_t compute_allocr = NULL;
 };
 
+enum class PoolingMethod { MEAN = 0, CLS = 1 };
+
 // Base model abstract class
 class BaseModel {
  public:
@@ -67,20 +60,23 @@ class BaseModel {
   virtual ~BaseModel();
 
   void Load();
-  // NEW: Forward and BatchForward are no longer pure virtual functions, their implementations are generic
-  std::vector<float> Forward(const Encoding &enc, bool normalize = true,
-                             int pooling_method = POOLING_METHOD_MEAN);
+  // NEW: Forward and BatchForward are no longer pure virtual functions, their
+  // implementations are generic
+  std::vector<float> Forward(
+      const Encoding &enc, bool normalize = true,
+      PoolingMethod pooling_method = PoolingMethod::MEAN);
   std::vector<std::vector<float>> BatchForward(
       const std::vector<Encoding> &batch, bool normalize = true,
-      int pooling_method = POOLING_METHOD_MEAN);
+      PoolingMethod pooling_method = PoolingMethod::MEAN);
 
  protected:
   // Pure virtual function - subclasses must implement
-  virtual struct ggml_cgraph *BuildGraph(const std::vector<Encoding> &batch,
-                                         bool normalize = true,
-                                         int pooling_method = 0) = 0;
+  virtual struct ggml_cgraph *BuildGraph(
+      const std::vector<Encoding> &batch, bool normalize = true,
+      PoolingMethod pooling_method = PoolingMethod::MEAN) = 0;
 
-  // NEW: New pure virtual functions, subclasses must implement to load their specific parts
+  // NEW: New pure virtual functions, subclasses must implement to load their
+  // specific parts
   virtual void LoadHyperparameters(struct gguf_context *ctx_gguf) = 0;
   virtual void LoadTensors() = 0;
 
@@ -89,7 +85,8 @@ class BaseModel {
   void Clear();
 
   struct ggml_cgraph *CommonBatchForwardSetup(
-      const std::vector<Encoding> &batch, bool normalize, int pooling_method);
+      const std::vector<Encoding> &batch, bool normalize,
+      PoolingMethod pooling_method);
   std::vector<std::vector<float>> ExtractResults(struct ggml_cgraph *graph,
                                                  int batch_size,
                                                  int hidden_size);
@@ -97,7 +94,8 @@ class BaseModel {
   // Member variables
   std::string model_path;
   std::string arch;
-  BaseConfig *hparams = nullptr;  // NEW: Use base class pointer to store hparams
+  BaseConfig *hparams =
+      nullptr;  // NEW: Use base class pointer to store hparams
   BackendContext ctx;
 
  private:
@@ -120,15 +118,16 @@ class BaseEmbedding {
     delete model;
   }
 
-  std::vector<float> Encode(const std::string &text, bool normalize = true,
-                            int pooling_method = 0) {
+  std::vector<float> Encode(
+      const std::string &text, bool normalize = true,
+      PoolingMethod pooling_method = PoolingMethod::MEAN) {
     std::vector<std::string> batch = {text};
     return BatchEncode(batch, normalize, pooling_method)[0];
   }
 
   std::vector<std::vector<float>> BatchEncode(
       const std::vector<std::string> &batch, bool normalize = true,
-      int pooling_method = 0) {
+      PoolingMethod pooling_method = PoolingMethod::MEAN) {
     auto encodings = tok->EncodeBatch(batch);
     auto embeddings = model->BatchForward(encodings, normalize, pooling_method);
     return embeddings;

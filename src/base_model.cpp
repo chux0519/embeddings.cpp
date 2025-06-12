@@ -14,7 +14,6 @@
 #include "utils.h"
 
 namespace embeddings {
-
 BaseModel::BaseModel(const std::string &gguf_model) : model_path(gguf_model) {}
 
 BaseModel::~BaseModel() {
@@ -27,13 +26,14 @@ BaseModel::~BaseModel() {
 void BaseModel::Load() { LoadModelImpl(this->model_path); }
 
 std::vector<float> BaseModel::Forward(const Encoding &enc, bool normalize,
-                                      int pooling_method) {
+                                      PoolingMethod pooling_method) {
   std::vector<Encoding> batch = {enc};
   return BatchForward(batch, normalize, pooling_method)[0];
 }
 
 std::vector<std::vector<float>> BaseModel::BatchForward(
-    const std::vector<Encoding> &batch, bool normalize, int pooling_method) {
+    const std::vector<Encoding> &batch, bool normalize,
+    PoolingMethod pooling_method) {
   if (batch.empty()) {
     return {};
   }
@@ -61,6 +61,8 @@ void BaseModel::LoadModelImpl(const std::string &gguf_model) {
   fprintf(stderr, "%s: architecture: %s\n", __func__, arch.c_str());
   fprintf(stderr, "%s: ftype:        %s\n", __func__,
           get_ftype(get_u32(ctx_gguf, KEY_FTYPE)).c_str());
+  fprintf(stderr, "%s: desc: %s\n", __func__,
+          get_str(ctx_gguf, KEY_DESCRIPTION).c_str());
 
   // 2. Call virtual functions to let subclasses load specific hyperparameters
   LoadHyperparameters(ctx_gguf);
@@ -123,7 +125,8 @@ void BaseModel::LoadModelImpl(const std::string &gguf_model) {
     }
   }
 
-  // 5. Call virtual functions to let subclasses set their own pointers based on loaded tensors
+  // 5. Call virtual functions to let subclasses set their own pointers based on
+  // loaded tensors
   LoadTensors();
 
   // 6. Cleanup
@@ -175,7 +178,8 @@ void BaseModel::InitializeBackend() {
 }
 
 struct ggml_cgraph *BaseModel::CommonBatchForwardSetup(
-    const std::vector<Encoding> &batch, bool normalize, int pooling_method) {
+    const std::vector<Encoding> &batch, bool normalize,
+    PoolingMethod pooling_method) {
   Clear();
 
   // build compute graph

@@ -47,8 +47,8 @@ static bool should_quantize_tensor(const std::string& name,
 static void write_gte_hparams(gguf_context* ctx,
                               const embeddings::GteBertConfig& hparams) {
   gguf_set_val_u32(ctx, "vocab_size", hparams.vocab_size);
-  gguf_set_val_u32(ctx, "max_position_embedding",
-                   8192);  // Snowflake-arctic-embed-m is 8192
+  gguf_set_val_u32(ctx, "max_position_embeddings",
+                   hparams.max_position_embeddings);
   gguf_set_val_u32(ctx, "hidden_size", hparams.hidden_size);
   gguf_set_val_u32(ctx, "intermediate_size", hparams.intermediate_size);
   gguf_set_val_u32(ctx, "num_attention_heads", hparams.num_attention_heads);
