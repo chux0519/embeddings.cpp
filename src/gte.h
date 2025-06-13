@@ -58,8 +58,8 @@ struct GteBertModel : public BaseModel {
 
 struct GteEmbedding : public BaseEmbedding<GteBertModel> {
   GteEmbedding() = default;
-  GteEmbedding(const std::string &hf_token_json, const std::string &gguf_model)
-      : BaseEmbedding<GteBertModel>(hf_token_json, gguf_model) {}
+  GteEmbedding(const std::string &gguf_model)
+      : BaseEmbedding<GteBertModel>(gguf_model) {}
 };
 
 }  // namespace embeddings

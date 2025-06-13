@@ -15,6 +15,11 @@ Tokenizer::Tokenizer(const std::string &path) {
   tok = tok_.release();
 }
 
+Tokenizer::Tokenizer(const std::string &json_blob, bool /* is_blob */) {
+  auto tok_ = tokenizers::HFTokenizer::FromBlobJSON(json_blob);
+  tok = tok_.release();
+}
+
 Encoding Tokenizer::Encode(const std::string &text, bool add_special_tokens) {
   std::vector<std::string> texts = {text};
   return EncodeBatch(texts, add_special_tokens)[0];

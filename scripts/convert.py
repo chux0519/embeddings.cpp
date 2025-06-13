@@ -70,10 +70,33 @@ class GteConversionConfig(BaseConversionConfig):
         if 'attn_ln' in name or 'mlp_ln' in name  or 'bias' in name or 'LayerNorm' in name:
             return torch.float32
         return default_dtype
+    
+class JinaV3BertConfig(BaseConversionConfig):
+    ARCHITECTURE = "XLMRobertaLoRA"
 
+    def get_param_keys(self):
+        keys = super().get_param_keys()
+        keys.extend([
+            'max_position_embeddings',
+            'intermediate_size',
+            'rotary_emb_base',
+            'matryoshka_dimensions',
+        ])
+        return keys
+
+    def get_tensor_dtype(self, name: str, default_dtype: torch.dtype) -> torch.dtype:
+        # GTE models (like Snowflake) have specific layers that benefit from f32
+        if 'LayerNorm' in name or 'bias' in name:
+            return torch.float32
+        return default_dtype
 
 MODEL_CONFIG_MAP = {
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2": BertConversionConfig,
+    "shibing624/text2vec-base-multilingual": BertConversionConfig,
+    "BAAI/bge-base-zh-v1.5": BertConversionConfig,
+    "BAAI/bge-m3": BertConversionConfig,
     "Snowflake/snowflake-arctic-embed-m-v2.0": GteConversionConfig,
+    "jinaai/jina-embeddings-v3": JinaV3BertConfig,
 }
 
 def get_config_for_repo(repo_id: str, hf_config) -> BaseConversionConfig:

@@ -9,12 +9,13 @@
 #include <string>
 #include <vector>
 
+#include "constants.h"
 #include "ggml-alloc.h"
 #include "ggml-backend.h"
 #include "ggml.h"
 #include "gguf.h"
 #include "tokenizer.h"
-#include "constants.h"
+#include "utils.h"
 
 namespace embeddings {
 // Forward declaration
@@ -106,9 +107,28 @@ class BaseModel {
 template <typename ModelType>
 class BaseEmbedding {
  public:
-  BaseEmbedding(const std::string &hf_token_json,
-                const std::string &gguf_model) {
-    tok = new Tokenizer(hf_token_json);
+  BaseEmbedding(const std::string &gguf_model) {
+    // 1. Read tokenizer json from gguf
+    struct ggml_context *ctx_ggml = NULL;
+    struct gguf_init_params params = {true, &ctx_ggml};
+    struct gguf_context *ctx_gguf =
+        gguf_init_from_file(gguf_model.c_str(), params);
+    if (!ctx_gguf) {
+      throw std::runtime_error("failed to load GGUF from " + gguf_model);
+    }
+    std::string tokenizer_json = get_str(ctx_gguf, "tokenizer.ggml.file");
+    gguf_free(ctx_gguf);
+    ggml_free(ctx_ggml);
+
+    if (tokenizer_json.empty()) {
+      throw std::runtime_error("tokenizer.ggml.file not found in GGUF: " +
+                               gguf_model);
+    }
+
+    // 2. Init tokenizer from json blob
+    tok = new Tokenizer(tokenizer_json, true);
+
+    // 3. Init model
     model = new ModelType(gguf_model);
     model->Load();
   }

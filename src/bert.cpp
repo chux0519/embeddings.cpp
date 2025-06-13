@@ -56,10 +56,6 @@ void BertModel::LoadTensors() {
   embeddings.ln_e_w = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.weight");
   embeddings.ln_e_b = get_tensor(ctx.ctx_data, "embeddings.LayerNorm.bias");
 
-  // pooler
-  embeddings.pooler_e_w = get_tensor(ctx.ctx_data, "pooler.dense.weight");
-  embeddings.pooler_e_b = get_tensor(ctx.ctx_data, "pooler.dense.bias");
-
   // layers
   layers.resize(hparams->num_hidden_layers);
   for (int i = 0; i < hparams->num_hidden_layers; ++i) {

@@ -56,8 +56,8 @@ class JinaBertModel : public BaseModel {
 
 class JinaEmbedding : public BaseEmbedding<JinaBertModel> {
  public:
-  JinaEmbedding(const std::string &hf_token_json, const std::string &gguf_model)
-      : BaseEmbedding<JinaBertModel>(hf_token_json, gguf_model) {}
+  JinaEmbedding(const std::string &gguf_model)
+      : BaseEmbedding<JinaBertModel>(gguf_model) {}
 };
 
 }  // namespace embeddings

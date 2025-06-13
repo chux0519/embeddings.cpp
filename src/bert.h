@@ -15,8 +15,6 @@ struct BertEmbedding {
   struct ggml_tensor *position_embeddings;
   struct ggml_tensor *ln_e_w;
   struct ggml_tensor *ln_e_b;
-  struct ggml_tensor *pooler_e_w;
-  struct ggml_tensor *pooler_e_b;
 };
 
 struct EncoderBlock {
@@ -63,7 +61,7 @@ class BertModel : public BaseModel {
 
 class Embedding : public BaseEmbedding<BertModel> {
  public:
-  Embedding(const std::string &hf_token_json, const std::string &gguf_model)
-      : BaseEmbedding<BertModel>(hf_token_json, gguf_model) {}
+  Embedding(const std::string &gguf_model)
+      : BaseEmbedding<BertModel>(gguf_model) {}
 };
 }  // namespace embeddings

@@ -23,6 +23,7 @@ struct Encoding {
 class Tokenizer {
  public:
   Tokenizer(const std::string &path);
+  Tokenizer(const std::string &json_blob, bool /* is_blob */);
 
   Encoding Encode(const std::string &, bool add_special_tokens = true);
   std::vector<Encoding> EncodeBatch(const std::vector<std::string> &,
