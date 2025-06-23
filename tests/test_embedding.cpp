@@ -11,7 +11,7 @@ using namespace embeddings;
 
 void TestEmbedding(const std::string &model_file, bool normalize,
                    PoolingMethod pooling_method) {
-  auto model = Embedding(model_file);
+  auto model = BertEmbedding(model_file);
   std::vector<std::string> prompts = {"你好，今天天气怎么样？"};
   auto res = model.BatchEncode(prompts, normalize, pooling_method);
   for (size_t i = 0; i < prompts.size(); i++) {

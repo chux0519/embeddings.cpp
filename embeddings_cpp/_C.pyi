@@ -3,25 +3,21 @@ embeddings.cpp Python bindings
 """
 from __future__ import annotations
 import typing
-__all__ = ['Embedding', 'Encoding', 'JinaEmbedding', 'Tokenizer', 'Tokens', 'TokensBatch']
-class Embedding:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
-    def __init__(self, hf_token_json: str, gguf_model: str) -> None:
-        ...
-    def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: int = 0) -> list[list[float]]:
+__all__ = ['BertEmbedding', 'CLS', 'Encoding', 'GteEmbedding', 'JinaEmbedding', 'MEAN', 'PoolingMethod', 'Tokenizer', 'Tokens', 'TokensBatch']
+class BertEmbedding:
+    def __init__(self, gguf_model: str) -> None:
+        """
+        Initializes the BertEmbedding model from a GGUF file path.
+        """
+    def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: PoolingMethod = ...) -> list[list[float]]:
         """
         Encodes a batch of strings into a list of float vectors.
         """
-    def encode(self, text: str, normalize: bool = True, pooling_method: int = 0) -> list[float]:
+    def encode(self, text: str, normalize: bool = True, pooling_method: PoolingMethod = ...) -> list[float]:
         """
         Encodes a single string into a vector of floats.
         """
 class Encoding:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
     def __init__(self) -> None:
         ...
     @property
@@ -40,24 +36,70 @@ class Encoding:
     @ids.setter
     def ids(self, arg0: list[int]) -> None:
         ...
-class JinaEmbedding:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
-    def __init__(self, hf_token_json: str, gguf_model: str) -> None:
-        ...
-    def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: int = 0) -> list[list[float]]:
+class GteEmbedding:
+    def __init__(self, gguf_model: str) -> None:
+        """
+        Initializes the GteEmbedding model from a GGUF file path.
+        """
+    def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: PoolingMethod = ...) -> list[list[float]]:
         """
         Encodes a batch of strings into a list of float vectors.
         """
-    def encode(self, text: str, normalize: bool = True, pooling_method: int = 0) -> list[float]:
+    def encode(self, text: str, normalize: bool = True, pooling_method: PoolingMethod = ...) -> list[float]:
         """
         Encodes a single string into a vector of floats.
         """
-class Tokenizer:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
+class JinaEmbedding:
+    def __init__(self, gguf_model: str) -> None:
+        """
+        Initializes the JinaEmbedding model from a GGUF file path.
+        """
+    def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: PoolingMethod = ...) -> list[list[float]]:
+        """
+        Encodes a batch of strings into a list of float vectors.
+        """
+    def encode(self, text: str, normalize: bool = True, pooling_method: PoolingMethod = ...) -> list[float]:
+        """
+        Encodes a single string into a vector of floats.
+        """
+class PoolingMethod:
+    """
+    Members:
+    
+      MEAN
+    
+      CLS
+    """
+    CLS: typing.ClassVar[PoolingMethod]  # value = <PoolingMethod.CLS: 1>
+    MEAN: typing.ClassVar[PoolingMethod]  # value = <PoolingMethod.MEAN: 0>
+    __members__: typing.ClassVar[dict[str, PoolingMethod]]  # value = {'MEAN': <PoolingMethod.MEAN: 0>, 'CLS': <PoolingMethod.CLS: 1>}
+    def __eq__(self, other: typing.Any) -> bool:
         ...
+    def __getstate__(self) -> int:
+        ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: int) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: int) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
+        ...
+class Tokenizer:
     def __init__(self, path: str) -> None:
         ...
     def decode(self, tokens: list[int], skip_special_tokens: bool = True) -> str:
@@ -74,9 +116,6 @@ class Tokenizer:
         """
 class Tokens:
     __hash__: typing.ClassVar[None] = None
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
     def __bool__(self: list[int]) -> bool:
         """
         Check whether the list is nonempty
@@ -176,9 +215,6 @@ class Tokens:
         """
 class TokensBatch:
     __hash__: typing.ClassVar[None] = None
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
     def __bool__(self: list[list[int]]) -> bool:
         """
         Check whether the list is nonempty
@@ -272,3 +308,5 @@ class TokensBatch:
         """
         Remove the first item from the list whose value is x. It is an error if there is no such item.
         """
+CLS: PoolingMethod  # value = <PoolingMethod.CLS: 1>
+MEAN: PoolingMethod  # value = <PoolingMethod.MEAN: 0>

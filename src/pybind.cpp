@@ -3,6 +3,7 @@
 #include <pybind11/stl_bind.h>
 
 #include "bert.h"
+#include "gte.h"
 #include "jina_bert.h"
 #include "tokenizer.h"
 
@@ -35,15 +36,43 @@ PYBIND11_MODULE(_C, m) {
       .def("decode", &Tokenizer::Decode, "Decodes tokens into a string.",
            "tokens"_a, "skip_special_tokens"_a = true);
 
-  //   py::class_<Embedding>(m, "Embedding")
-  //       .def(py::init<const std::string &, const std::string &>(),
-  //            "hf_token_json"_a, "gguf_model"_a)
-  //       .def("encode", &Embedding::Encode,
-  //            "Encodes a single string into a vector of floats.", "text"_a,
-  //            "normalize"_a = true, "pooling_method"_a = 0)
-  //       .def("batch_encode", &Embedding::BatchEncode,
-  //            "Encodes a batch of strings into a list of float vectors.",
-  //            "texts"_a, "normalize"_a = true, "pooling_method"_a = 0);
+  py::enum_<PoolingMethod>(m, "PoolingMethod")
+      .value("MEAN", PoolingMethod::MEAN)
+      .value("CLS", PoolingMethod::CLS)
+      .export_values();
+
+  py::class_<BertEmbedding>(m, "BertEmbedding")
+      .def(py::init<const std::string &>(), "gguf_model"_a,
+           "Initializes the BertEmbedding model from a GGUF file path.")
+      .def("encode", &BertEmbedding::Encode,
+           "Encodes a single string into a vector of floats.", "text"_a,
+           "normalize"_a = true, "pooling_method"_a = PoolingMethod::MEAN)
+      .def("batch_encode", &BertEmbedding::BatchEncode,
+           "Encodes a batch of strings into a list of float vectors.",
+           "texts"_a, "normalize"_a = true,
+           "pooling_method"_a = PoolingMethod::MEAN);
+
+  py::class_<JinaEmbedding>(m, "JinaEmbedding")
+      .def(py::init<const std::string &>(), "gguf_model"_a,
+           "Initializes the JinaEmbedding model from a GGUF file path.")
+      .def("encode", &JinaEmbedding::Encode,
+           "Encodes a single string into a vector of floats.", "text"_a,
+           "normalize"_a = true, "pooling_method"_a = PoolingMethod::MEAN)
+      .def("batch_encode", &JinaEmbedding::BatchEncode,
+           "Encodes a batch of strings into a list of float vectors.",
+           "texts"_a, "normalize"_a = true,
+           "pooling_method"_a = PoolingMethod::MEAN);
+
+  py::class_<GteEmbedding>(m, "GteEmbedding")
+      .def(py::init<const std::string &>(), "gguf_model"_a,
+           "Initializes the GteEmbedding model from a GGUF file path.")
+      .def("encode", &GteEmbedding::Encode,
+           "Encodes a single string into a vector of floats.", "text"_a,
+           "normalize"_a = true, "pooling_method"_a = PoolingMethod::MEAN)
+      .def("batch_encode", &GteEmbedding::BatchEncode,
+           "Encodes a batch of strings into a list of float vectors.",
+           "texts"_a, "normalize"_a = true,
+           "pooling_method"_a = PoolingMethod::MEAN);
 }
 
 }  // namespace embeddings
