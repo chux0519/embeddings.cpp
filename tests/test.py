@@ -2,15 +2,8 @@ import os
 import sys
 from typing import List
 
-# 假设你的编译产物放在 build/ 目录下，并且你的 Python 包叫做 embeddings_cpp
-# 你可能需要调整 sys.path
-# 例如，如果从项目根目录运行，可以添加 'build' 目录
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'build'))
-
 try:
-    # 假设你的 pybind 模块编译为 _C.so (或者 .pyd on Windows)
-    # 并且放在一个名为 embeddings_cpp 的包里
-    from embeddings_cpp._C import BertEmbedding, GteEmbedding, JinaEmbedding, PoolingMethod
+    from embeddings_cpp import BertEmbedding, GteEmbedding, JinaEmbedding, PoolingMethod
 except ImportError:
     print("Error: Could not import the C++ bindings.")
     print("Please make sure you have compiled the project and the output is in the python path.")
