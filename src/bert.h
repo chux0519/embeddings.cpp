@@ -59,10 +59,4 @@ class BertModel : public BaseModel {
   std::vector<EncoderBlock> layers;
 };
 
-class BertEmbedding : public BaseEmbedding<BertModel> {
- public:
-  BertEmbedding(const std::string &gguf_model)
-      : BaseEmbedding<BertModel>(gguf_model) {}
-};
-
 }  // namespace embeddings

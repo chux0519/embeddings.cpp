@@ -32,4 +32,56 @@ std::unique_ptr<BaseModel> create_model_from_gguf(const std::string& gguf_path) 
     throw std::runtime_error("Unknown or unsupported model architecture: " + arch);
 }
 
+class EmbeddingImpl : public Embedding {
+public:
+    explicit EmbeddingImpl(const std::string& gguf_path) {
+        struct ggml_context* ctx_ggml = nullptr;
+        struct gguf_init_params params = {true, &ctx_ggml};
+        struct gguf_context* ctx_gguf = gguf_init_from_file(gguf_path.c_str(), params);
+        if (!ctx_gguf) {
+            throw std::runtime_error("EmbeddingImpl: Failed to load GGUF from " + gguf_path);
+        }
+        std::string tokenizer_json = get_str(ctx_gguf, "tokenizer.ggml.file");
+        gguf_free(ctx_gguf);
+        ggml_free(ctx_ggml);
+
+        if (tokenizer_json.empty()) {
+            throw std::runtime_error("EmbeddingImpl: tokenizer.ggml.file not found in GGUF: " + gguf_path);
+        }
+
+        tok = std::make_unique<Tokenizer>(tokenizer_json, true /* is_blob */);
+
+        model = create_model_from_gguf(gguf_path);
+
+        model->Load();
+    }
+
+    std::vector<float> encode(
+        const std::string& text,
+        bool normalize = true,
+        PoolingMethod pooling_method = PoolingMethod::MEAN) override {
+        
+        std::vector<std::string> batch = {text};
+        return batch_encode(batch, normalize, pooling_method)[0];
+    }
+
+    std::vector<std::vector<float>> batch_encode(
+        const std::vector<std::string>& batch,
+        bool normalize = true,
+        PoolingMethod pooling_method = PoolingMethod::MEAN) override {
+        
+        auto encodings = tok->EncodeBatch(batch, true);
+        return model->BatchForward(encodings, normalize, pooling_method);
+    }
+
+private:
+    std::unique_ptr<Tokenizer> tok;
+    std::unique_ptr<BaseModel> model;
+};
+
+
+std::unique_ptr<Embedding> create_embedding(const std::string& gguf_path) {
+    return std::make_unique<EmbeddingImpl>(gguf_path);
+}
+
 } // namespace embeddings

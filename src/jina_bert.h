@@ -54,10 +54,4 @@ class JinaBertModel : public BaseModel {
   std::vector<JinaEncoderBlock> layers;
 };
 
-class JinaEmbedding : public BaseEmbedding<JinaBertModel> {
- public:
-  JinaEmbedding(const std::string &gguf_model)
-      : BaseEmbedding<JinaBertModel>(gguf_model) {}
-};
-
 }  // namespace embeddings

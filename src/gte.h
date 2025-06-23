@@ -56,12 +56,6 @@ struct GteBertModel : public BaseModel {
   std::vector<GteBertLayer> layers;
 };
 
-struct GteEmbedding : public BaseEmbedding<GteBertModel> {
-  GteEmbedding() = default;
-  GteEmbedding(const std::string &gguf_model)
-      : BaseEmbedding<GteBertModel>(gguf_model) {}
-};
-
 }  // namespace embeddings
 
 #endif  // EMBEDDINGS_GTE_H
