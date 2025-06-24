@@ -51,6 +51,9 @@ Execute the embedding tests:
 
 Before running the notebooks, install embeddings.cpp:
 ```bash
+# use CMAKE_ARGS to add more cmake settings
+$env:CMAKE_ARGS="-DGGML_VULKAN=ON"
+
 # Install the package
 pip install .
 
