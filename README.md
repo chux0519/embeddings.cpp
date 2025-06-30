@@ -34,6 +34,8 @@ python scripts/convert.py BAAI/bge-m3 ./models/bge-m3.fp16.gguf f16
 # Convert BGE-Base Chinese v1.5 model
 python scripts/convert.py BAAI/bge-base-zh-v1.5 ./models/bge-base-zh-v1.5.fp16.gguf f16
 
+uv run scripts/convert.py Snowflake/snowflake-arctic-embed-m-v2.0 ./models/snowflake-arctic-embed-m-v2.0.fp16.gguf f16
+
 # Convert Text2Vec multilingual model
 python scripts/convert.py shibing624/text2vec-base-multilingual ./models/text2vec-base-multilingual.fp16.gguf f16
 
@@ -82,7 +84,9 @@ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
 build with vulkan support:
 
 ```powershell
-cmake -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON ..
+cmake -DGGML_VULKAN=ON -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON ..
+# If you encounter any issues, ensure that your graphics driver and Vulkan SDK versions are compatible.
+# You can also add -DGGML_VULKAN_DEBUG=ON -DGGML_VULKAN_VALIDATE=ON for debuging
 ```
 
 ## debugging
