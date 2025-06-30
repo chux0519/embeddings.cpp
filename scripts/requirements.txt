@@ -7,3 +7,5 @@ matplotlib
 sentence_transformers
 setuptools
 protobuf
+numpy
+pathlib
