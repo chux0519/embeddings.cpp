@@ -19,7 +19,7 @@
 
 namespace embeddings {
 // Forward declaration
-struct Encoding;
+struct TokenizedInput;
 
 // Base configuration interface
 struct BaseConfig {
@@ -64,16 +64,16 @@ class BaseModel {
   // NEW: Forward and BatchForward are no longer pure virtual functions, their
   // implementations are generic
   std::vector<float> Forward(
-      const Encoding &enc, bool normalize = true,
+      const TokenizedInput &enc, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN);
   std::vector<std::vector<float>> BatchForward(
-      const std::vector<Encoding> &batch, bool normalize = true,
+      const std::vector<TokenizedInput> &batch, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN);
 
  protected:
   // Pure virtual function - subclasses must implement
   virtual struct ggml_cgraph *BuildGraph(
-      const std::vector<Encoding> &batch, bool normalize = true,
+      const std::vector<TokenizedInput> &batch, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN) = 0;
 
   // NEW: New pure virtual functions, subclasses must implement to load their
@@ -86,7 +86,7 @@ class BaseModel {
   void Clear();
 
   struct ggml_cgraph *CommonBatchForwardSetup(
-      const std::vector<Encoding> &batch, bool normalize,
+      const std::vector<TokenizedInput> &batch, bool normalize,
       PoolingMethod pooling_method);
   std::vector<std::vector<float>> ExtractResults(struct ggml_cgraph *graph,
                                                  int batch_size,

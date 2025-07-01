@@ -25,14 +25,14 @@ BaseModel::~BaseModel() {
 
 void BaseModel::Load() { LoadModelImpl(this->model_path); }
 
-std::vector<float> BaseModel::Forward(const Encoding &enc, bool normalize,
+std::vector<float> BaseModel::Forward(const TokenizedInput &enc, bool normalize,
                                       PoolingMethod pooling_method) {
-  std::vector<Encoding> batch = {enc};
+  std::vector<TokenizedInput> batch = {enc};
   return BatchForward(batch, normalize, pooling_method)[0];
 }
 
 std::vector<std::vector<float>> BaseModel::BatchForward(
-    const std::vector<Encoding> &batch, bool normalize,
+    const std::vector<TokenizedInput> &batch, bool normalize,
     PoolingMethod pooling_method) {
   if (batch.empty()) {
     return {};
@@ -178,7 +178,7 @@ void BaseModel::InitializeBackend() {
 }
 
 struct ggml_cgraph *BaseModel::CommonBatchForwardSetup(
-    const std::vector<Encoding> &batch, bool normalize,
+    const std::vector<TokenizedInput> &batch, bool normalize,
     PoolingMethod pooling_method) {
   Clear();
 

@@ -163,7 +163,7 @@ void GteBertModel::LoadTensors() {
   }
 }
 
-struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<Encoding> &batch,
+struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &batch,
                                              bool normalize,
                                              PoolingMethod pooling_method) {
   auto gte_hparams = dynamic_cast<GteBertConfig *>(this->hparams);

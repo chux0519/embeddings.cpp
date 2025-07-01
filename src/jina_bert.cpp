@@ -148,7 +148,7 @@ void JinaBertModel::LoadTensors() {
 }
 
 struct ggml_cgraph *JinaBertModel::BuildGraph(
-    const std::vector<Encoding> &batch, bool normalize,
+    const std::vector<TokenizedInput> &batch, bool normalize,
     PoolingMethod pooling_method) {
   auto jina_hparams = dynamic_cast<JinaBertConfig *>(this->hparams);
   if (!jina_hparams) {
