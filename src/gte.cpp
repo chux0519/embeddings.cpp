@@ -198,8 +198,6 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
 
   struct ggml_tensor *input_ids =
       ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, B * L);
-  struct ggml_tensor *token_types =
-      ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, B * L);
   struct ggml_tensor *pool =
       ggml_new_tensor_3d(ctx.compute_ctx, GGML_TYPE_F32, L, 1, B);
   struct ggml_tensor *pos =
@@ -208,46 +206,65 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
       ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, d_head, L);
   struct ggml_tensor *rope_sin =
       ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, d_head, L);
+  struct ggml_tensor *pad_mask = ggml_new_tensor_4d(
+      ctx.compute_ctx, GGML_TYPE_F32, 1, L, 1, B);
+  struct ggml_tensor *minus_one = ggml_new_tensor_1d(
+      ctx.compute_ctx, GGML_TYPE_F32, 1);  // for attention mask
   ctx.compute_buffer =
       ggml_backend_alloc_ctx_tensors(ctx.compute_ctx, ctx.backend);
 
-  std::vector<int32_t> ids, types(B * L, 0);
+  // TODO: we should unpad all the inputs then restore them after the forward pass
+
+  std::vector<int32_t> ids(B * L, 0);
   for (auto &b : batch) {
+    // unpad inputs
+    // ids.insert(ids.end(), b.ids.begin(), b.ids.begin() + b.no_pad_len);
     ids.insert(ids.end(), b.ids.begin(), b.ids.end());
   }
   auto [rope_cos_data, rope_sin_data] = build_rope_cache(L, d_head, theta);
   // create RoPE position indices [0, 1, 2, ..., L-1]
+  // TODO: could be different for each batch, but we assume the same
   std::vector<int32_t> pos_data(L);
   for (int i = 0; i < L; ++i) pos_data[i] = i;
-  ggml_backend_tensor_set(pos, pos_data.data(), 0, sizeof(int32_t) * L);
 
+  ggml_backend_tensor_set(pos, pos_data.data(), 0, sizeof(int32_t) * L);
   ggml_backend_tensor_set(input_ids, ids.data(), 0,
                           ids.size() * sizeof(int32_t));
-  ggml_backend_tensor_set(token_types, types.data(), 0,
-                          types.size() * sizeof(int32_t));
   ggml_backend_tensor_set(rope_cos, rope_cos_data.data(), 0,
                           rope_cos_data.size() * sizeof(float));
   ggml_backend_tensor_set(rope_sin, rope_sin_data.data(), 0,
                           rope_sin_data.size() * sizeof(float));
 
+  float *pad_mask_data = (float *)malloc(ggml_nbytes(pad_mask));
   float *out_mask = (float *)malloc(sizeof(float) * B * L);
   for (int b = 0; b < B; ++b) {
     for (int i = 0; i < L; ++i) {
+    pad_mask_data[b * L + i] =
+          static_cast<float>(batch[b].attention_mask[i]);
       out_mask[b * L + i] =
           pooling_method == PoolingMethod::CLS ? (i == 0 ? 1.f : 0.f) : 1.f / L;
     }
   }
+  float m1 = -1.0f;
+  ggml_backend_tensor_set(minus_one, &m1, 0, sizeof(m1));
+  ggml_backend_tensor_set(pad_mask, pad_mask_data, 0, ggml_nbytes(pad_mask));
   ggml_backend_tensor_set(pool, out_mask, 0, sizeof(float) * B * L);
+  free(out_mask);
+  free(pad_mask_data);
 
+  // TODO: we should use the unpadded inputs
   struct ggml_tensor *emb =
       ggml_get_rows(ctx0, embeddings.word_embeddings, input_ids);
-  emb = ggml_add(
-      ctx0, emb,
-      ggml_get_rows(ctx0, embeddings.token_type_embeddings, token_types));
   emb = ggml_reshape_3d(ctx0, emb, n_embd, L, B);
   emb = ggml_norm_inplace(ctx0, emb, layer_norm_eps);
   emb = ggml_add(ctx0, ggml_mul(ctx0, emb, embeddings.LayerNorm_w),
                  embeddings.LayerNorm_b);
+
+struct ggml_tensor *attn_mask =
+      ggml_mul_mat(ctx0, pad_mask, pad_mask);        // [L, L, 1, B]
+  attn_mask = ggml_add(ctx0, attn_mask, minus_one);  // result -0
+  attn_mask = ggml_scale_inplace(ctx0, attn_mask,
+                                 100000.0f);  // FIXME: 1e3 will cause overflow?
 
   struct ggml_tensor *inpL = emb;
   for (int il = 0; il < n_layer; il++) {
@@ -286,6 +303,7 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
     // Perform matrix multiplication after fixing dimensions
     struct ggml_tensor *scores = ggml_mul_mat(ctx0, k_layer, q_layer);
     scores = ggml_scale_inplace(ctx0, scores, 1.0f / sqrtf((float)d_head));
+    scores = ggml_add(ctx0, scores, attn_mask);
     scores = ggml_soft_max(ctx0, scores);
 
     struct ggml_tensor *attn =
@@ -331,6 +349,8 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
 
     inpL = cur;
   }
+
+  // TODO: restore inputL here, we should use ggml functions
 
   inpL = ggml_mul_mat(ctx0, ggml_cont(ctx0, ggml_transpose(ctx0, inpL)), pool);
   inpL = ggml_reshape_2d(ctx0, inpL, n_embd, B);

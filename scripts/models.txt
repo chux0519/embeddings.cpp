@@ -1,5 +1,1 @@
-BAAI/bge-m3
-BAAI/bge-base-zh-v1.5
-shibing624/text2vec-base-multilingual
-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 Snowflake/snowflake-arctic-embed-m-v2.0
