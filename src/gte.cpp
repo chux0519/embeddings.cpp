@@ -215,7 +215,8 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
 
   // TODO: we should unpad all the inputs then restore them after the forward pass
 
-  std::vector<int32_t> ids(B * L, 0);
+  std::vector<int32_t> ids;
+  ids.reserve(B * L);
   for (auto &b : batch) {
     // unpad inputs
     // ids.insert(ids.end(), b.ids.begin(), b.ids.begin() + b.no_pad_len);
@@ -239,7 +240,9 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
   float *out_mask = (float *)malloc(sizeof(float) * B * L);
   for (int b = 0; b < B; ++b) {
     for (int i = 0; i < L; ++i) {
-    pad_mask_data[b * L + i] =
+      // pad_mask is 4D tensor: [1, L, 1, B], so indexing should be different
+      int pad_mask_idx = b * L + i;  // This assumes flattened indexing
+      pad_mask_data[pad_mask_idx] =
           static_cast<float>(batch[b].attention_mask[i]);
       out_mask[b * L + i] =
           pooling_method == PoolingMethod::CLS ? (i == 0 ? 1.f : 0.f) : 1.f / L;
