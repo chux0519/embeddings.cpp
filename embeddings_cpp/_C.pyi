@@ -3,15 +3,23 @@ A unified embedding library for various models.
 """
 from __future__ import annotations
 import typing
-__all__ = ['CLS', 'Embedding', 'MEAN', 'PoolingMethod', 'create_embedding']
+__all__ = ['CLS', 'Embedding', 'MEAN', 'PoolingMethod', 'TokenizedInput', 'create_embedding']
 class Embedding:
     def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: PoolingMethod = ...) -> list[list[float]]:
         """
         Encodes a batch of strings into a list of float vectors.
         """
+    def batch_tokenize(self, texts: list[str], add_special_tokens: bool = True) -> list[TokenizedInput]:
+        """
+        Tokenizes a batch of strings into token IDs and attention masks.
+        """
     def encode(self, text: str, normalize: bool = True, pooling_method: PoolingMethod = ...) -> list[float]:
         """
         Encodes a single string into a vector of floats.
+        """
+    def tokenize(self, text: str, add_special_tokens: bool = True) -> TokenizedInput:
+        """
+        Tokenizes a single string into token IDs and attention mask.
         """
 class PoolingMethod:
     """
@@ -49,6 +57,31 @@ class PoolingMethod:
         ...
     @property
     def value(self) -> int:
+        ...
+class TokenizedInput:
+    @property
+    def attention_mask(self) -> list[int]:
+        """
+        Attention mask
+        """
+    @attention_mask.setter
+    def attention_mask(self, arg0: list[int]) -> None:
+        ...
+    @property
+    def ids(self) -> list[int]:
+        """
+        Token IDs
+        """
+    @ids.setter
+    def ids(self, arg0: list[int]) -> None:
+        ...
+    @property
+    def no_pad_len(self) -> int:
+        """
+        Length without padding
+        """
+    @no_pad_len.setter
+    def no_pad_len(self, arg0: int) -> None:
         ...
 def create_embedding(gguf_path: str) -> Embedding:
     """

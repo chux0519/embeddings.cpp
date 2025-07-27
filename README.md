@@ -44,14 +44,7 @@ python scripts/convert.py sentence-transformers/paraphrase-multilingual-MiniLM-L
 
 ## Running Tests
 
-Execute the embedding tests:
-```bash
-./build/test_embedding
-```
-
-## Running Notebooks
-
-Before running the notebooks, install embeddings.cpp:
+Before running, install embeddings.cpp:
 ```bash
 # use CMAKE_ARGS to add more cmake settings
 $env:CMAKE_ARGS="-DGGML_VULKAN=ON"
@@ -65,7 +58,9 @@ cd build && make stub
 # on Windows
 pip install pybind11-stubgen
 # then
-C:\Users\chuxd\AppData\Roaming\Python\Python312\Scripts\pybind11-stubgen embeddings_cpp -o .
+pybind11-stubgen embeddings_cpp -o .
+
+python tests/test_tokenizer.py
 ```
 
 ## Building from Source
