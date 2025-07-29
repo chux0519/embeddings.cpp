@@ -215,11 +215,11 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
 
   // TODO: we should unpad all the inputs then restore them after the forward pass
 
-  std::vector<int32_t> ids(B * L, 0);
+  std::vector<int32_t> ids;
+  ids.reserve(B * L);  // Reserve space to avoid multiple reallocations
   for (auto &b : batch) {
-    // unpad inputs
-    // ids.insert(ids.end(), b.ids.begin(), b.ids.begin() + b.no_pad_len);
-    ids.insert(ids.end(), b.ids.begin(), b.ids.end());
+    // unpad inputs - use only the actual content length
+    ids.insert(ids.end(), b.ids.begin(), b.ids.begin() + b.no_pad_len);
   }
   auto [rope_cos_data, rope_sin_data] = build_rope_cache(L, d_head, theta);
   // create RoPE position indices [0, 1, 2, ..., L-1]
