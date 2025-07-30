@@ -84,8 +84,8 @@ cmake -DGGML_VULKAN=ON -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON ..
 # You can also add -DGGML_VULKAN_DEBUG=ON -DGGML_VULKAN_VALIDATE=ON for debuging
 ```
 
-## debugging
+## Debugging
 
-for better debugging ggml, we could use 0001-feat-add-debug-support-for-only-cpu-backend.patch
+GGML debug support is now enabled by default in the vendored version. This provides better debugging capabilities for CPU backend operations without requiring additional patches.
 
-check: https://github.com/ggml-org/ggml/discussions/655 for details
+For more information about GGML debugging features, see: https://github.com/ggml-org/ggml/discussions/655
