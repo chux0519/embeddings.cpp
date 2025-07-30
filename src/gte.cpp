@@ -18,24 +18,25 @@ namespace embeddings {
 // Helper: scatter [D, N] -> [D, L, B] using indices
 static struct ggml_tensor *ggml_scatter_rows_3d(
     struct ggml_context *ctx,
-    struct ggml_tensor *src,                // [D, N]
-    const std::vector<int32_t> &indices,    // length N
-    int B, int L) {                         // target shape
+    struct ggml_tensor *src,              // [D, N]
+    const std::vector<int32_t> &indices,  // length N
+    int B, int L) {                       // target shape
   // Ensure src is contiguous first
   src = ggml_cont(ctx, src);
-  
+
   const int D = src->ne[0];
   const int N = src->ne[1];
   struct ggml_tensor *dst = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, D, L, B);
-  
+
   // Initialize dst to zeros
   dst = ggml_set_zero(dst);
-  
-  // Note: This function will be called during graph execution, 
+
+  // Note: This function will be called during graph execution,
   // so we can't directly access tensor data here.
-  // We need to implement this as a custom GGML operation or use existing operations.
-  // For now, let's create a zero tensor and note that this needs to be implemented properly.
-  
+  // We need to implement this as a custom GGML operation or use existing
+  // operations. For now, let's create a zero tensor and note that this needs to
+  // be implemented properly.
+
   return dst;
 }
 
@@ -122,7 +123,8 @@ void GteBertModel::LoadHyperparameters(struct gguf_context *ctx_gguf) {
   auto hparams = new GteBertConfig();
   // load hparams
   hparams->vocab_size = get_u32(ctx_gguf, KEY_VOCAB_SIZE);
-  hparams->max_position_embeddings = get_u32(ctx_gguf, KEY_MAX_POSITION_EMBEDDING);
+  hparams->max_position_embeddings =
+      get_u32(ctx_gguf, KEY_MAX_POSITION_EMBEDDING);
   hparams->hidden_size = get_u32(ctx_gguf, KEY_HIDDEN_SIZE);
   hparams->intermediate_size = get_u32(ctx_gguf, KEY_INTERMEDIATE_SIZE);
   hparams->num_attention_heads = get_u32(ctx_gguf, KEY_NUM_ATTENTION_HEADS);
@@ -187,9 +189,9 @@ void GteBertModel::LoadTensors() {
   }
 }
 
-struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &batch,
-                                             bool normalize,
-                                             PoolingMethod pooling_method) {
+struct ggml_cgraph *GteBertModel::BuildGraph(
+    const std::vector<TokenizedInput> &batch, bool normalize,
+    PoolingMethod pooling_method) {
   auto gte_hparams = static_cast<GteBertConfig *>(this->hparams);
   const int D = gte_hparams->hidden_size;
   const int L = batch[0].ids.size();
@@ -213,7 +215,8 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
   }
   const int N = unpadded_ids.size();
 
-  size_t ctx_size = GGML_DEFAULT_GRAPH_SIZE * ggml_tensor_overhead() + ggml_graph_overhead();
+  size_t ctx_size =
+      GGML_DEFAULT_GRAPH_SIZE * ggml_tensor_overhead() + ggml_graph_overhead();
   struct ggml_init_params params = {ctx_size, NULL, true};
   ctx.compute_ctx = ggml_init(params);
   ctx.compute_graph_ctx = ggml_init(params);
@@ -222,35 +225,45 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
 
   // Tensors
   auto *input_ids = ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, N);
-  auto *pad_mask = ggml_new_tensor_4d(ctx.compute_ctx, GGML_TYPE_F32, 1, L, 1, B);
+  auto *pad_mask =
+      ggml_new_tensor_4d(ctx.compute_ctx, GGML_TYPE_F32, 1, L, 1, B);
   auto *minus_one = ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_F32, 1);
 
   // RoPE cache tensors
-  auto *rope_cos = ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, d_head, N);
-  auto *rope_sin = ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, d_head, N);
+  auto *rope_cos =
+      ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, d_head, N);
+  auto *rope_sin =
+      ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, d_head, N);
 
   // Allocate backend memory for all tensors
-  ctx.compute_buffer = ggml_backend_alloc_ctx_tensors(ctx.compute_ctx, ctx.backend);
+  ctx.compute_buffer =
+      ggml_backend_alloc_ctx_tensors(ctx.compute_ctx, ctx.backend);
 
   // Now set tensor data
-  ggml_backend_tensor_set(input_ids, unpadded_ids.data(), 0, N * sizeof(int32_t));
-  ggml_backend_tensor_set(pad_mask, pad_mask_data.data(), 0, sizeof(float) * B * L);
+  ggml_backend_tensor_set(input_ids, unpadded_ids.data(), 0,
+                          N * sizeof(int32_t));
+  ggml_backend_tensor_set(pad_mask, pad_mask_data.data(), 0,
+                          sizeof(float) * B * L);
   float m1 = -1.0f;
   ggml_backend_tensor_set(minus_one, &m1, 0, sizeof(float));
 
   // RoPE cache
   auto [rope_cos_data, rope_sin_data] = build_rope_cache(N, d_head, theta);
-  ggml_backend_tensor_set(rope_cos, rope_cos_data.data(), 0, rope_cos_data.size() * sizeof(float));
-  ggml_backend_tensor_set(rope_sin, rope_sin_data.data(), 0, rope_sin_data.size() * sizeof(float));
+  ggml_backend_tensor_set(rope_cos, rope_cos_data.data(), 0,
+                          rope_cos_data.size() * sizeof(float));
+  ggml_backend_tensor_set(rope_sin, rope_sin_data.data(), 0,
+                          rope_sin_data.size() * sizeof(float));
 
   // Embedding
-  auto *emb = ggml_get_rows(ctx0, embeddings.word_embeddings, input_ids); // [D, N]
+  auto *emb =
+      ggml_get_rows(ctx0, embeddings.word_embeddings, input_ids);  // [D, N]
   emb = ggml_cont(ctx0, ggml_reshape_2d(ctx0, emb, D, N));
   emb = ggml_norm_inplace(ctx0, emb, gte_hparams->layer_norm_eps);
-  emb = ggml_add(ctx0, ggml_mul(ctx0, emb, embeddings.LayerNorm_w), embeddings.LayerNorm_b);
+  emb = ggml_add(ctx0, ggml_mul(ctx0, emb, embeddings.LayerNorm_w),
+                 embeddings.LayerNorm_b);
 
   // Attention mask
-  auto *attn_mask = ggml_mul_mat(ctx0, pad_mask, pad_mask);        // [L, L, 1, B]
+  auto *attn_mask = ggml_mul_mat(ctx0, pad_mask, pad_mask);  // [L, L, 1, B]
   attn_mask = ggml_add(ctx0, attn_mask, minus_one);
   attn_mask = ggml_scale_inplace(ctx0, attn_mask, 100000.0f);
 
@@ -258,11 +271,22 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
   auto *inpL = emb;  // [D, N]
   for (int il = 0; il < n_layer; ++il) {
     const auto &layer = layers[il];
-    auto *qkv = ggml_add(ctx0, ggml_mul_mat(ctx0, layer.qkv_proj_w, inpL), layer.qkv_proj_b);
+    auto *qkv = ggml_add(ctx0, ggml_mul_mat(ctx0, layer.qkv_proj_w, inpL),
+                         layer.qkv_proj_b);
 
-    auto *q = ggml_reshape_4d(ctx0, ggml_cont(ctx0, ggml_view_2d(ctx0, qkv, D, N, qkv->nb[1], 0)), d_head, n_head, N, 1);
-    auto *k = ggml_reshape_4d(ctx0, ggml_cont(ctx0, ggml_view_2d(ctx0, qkv, D, N, qkv->nb[1], D * qkv->nb[0])), d_head, n_head, N, 1);
-    auto *v = ggml_reshape_4d(ctx0, ggml_cont(ctx0, ggml_view_2d(ctx0, qkv, D, N, qkv->nb[1], 2 * D * qkv->nb[0])), d_head, n_head, N, 1);
+    auto *q = ggml_reshape_4d(
+        ctx0, ggml_cont(ctx0, ggml_view_2d(ctx0, qkv, D, N, qkv->nb[1], 0)),
+        d_head, n_head, N, 1);
+    auto *k = ggml_reshape_4d(
+        ctx0,
+        ggml_cont(ctx0,
+                  ggml_view_2d(ctx0, qkv, D, N, qkv->nb[1], D * qkv->nb[0])),
+        d_head, n_head, N, 1);
+    auto *v = ggml_reshape_4d(
+        ctx0,
+        ggml_cont(ctx0, ggml_view_2d(ctx0, qkv, D, N, qkv->nb[1],
+                                     2 * D * qkv->nb[0])),
+        d_head, n_head, N, 1);
 
     q = ggml_apply_rotary_pos_emb(ctx0, q, rope_cos, rope_sin);
     k = ggml_apply_rotary_pos_emb(ctx0, k, rope_cos, rope_sin);
@@ -279,30 +303,45 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
     attn = ggml_cont(ctx0, ggml_permute(ctx0, attn, 0, 2, 1, 3));
     attn = ggml_reshape_2d(ctx0, attn, D, N);
 
-    auto *proj = ggml_add(ctx0, ggml_mul_mat(ctx0, layer.o_proj_w, attn), layer.o_proj_b);
+    auto *proj = ggml_add(ctx0, ggml_mul_mat(ctx0, layer.o_proj_w, attn),
+                          layer.o_proj_b);
     auto *res = ggml_add(ctx0, inpL, proj);
     res = ggml_norm_inplace(ctx0, res, gte_hparams->layer_norm_eps);
     res = ggml_add(ctx0, ggml_mul(ctx0, res, layer.attn_ln_w), layer.attn_ln_b);
 
-    // MLP
-    auto *ff = ggml_mul_mat(ctx0, layer.up_gate_proj_w, res);
-    auto *up = ggml_cont(ctx0, ggml_view_2d(ctx0, ff, D * 2, N, ff->nb[1], 0));
-    auto *gated = ggml_cont(ctx0, ggml_view_2d(ctx0, ff, D * 2, N, ff->nb[1], D * ff->nb[0]));
-    gated = ggml_gelu(ctx0, gated);
-    auto *out = ggml_mul(ctx0, up, gated);
-    out = ggml_add(ctx0, ggml_mul_mat(ctx0, layer.down_proj_w, out), layer.down_proj_b);
-    inpL = ggml_add(ctx0, res, out);
+    // 1. gated_layers
+    // {768, 6144, 1, 1} * {768, 5 , 1, 1} = {6144, 5, 1, 1}
+    const int hidden_features = gte_hparams->intermediate_size;  // 3072
+    struct ggml_tensor *up_gate = ggml_mul_mat(ctx0, layer.up_gate_proj_w, res);
+    // 2. Split gated and non-gated parts
+    struct ggml_tensor *up_state =
+        ggml_view_2d(ctx0, up_gate, hidden_features, res->ne[1], up_gate->nb[1],
+                     0);  // {3072, 5, 1, 1}
+    struct ggml_tensor *gate =
+        ggml_view_2d(ctx0, up_gate, hidden_features, res->ne[1], up_gate->nb[1],
+                     hidden_features * up_gate->nb[0]);
+    // 3. Activation function (GELU) // {3072, 5, 1, 1}
+    gate = ggml_cont(ctx0, gate);
+    gate = ggml_gelu(ctx0, gate);
+    // 4. Element-wise multiplication // {3072, 5, 1, 1}
+    struct ggml_tensor *gated_states = ggml_mul(ctx0, gate, up_state);
+    // 5. wo (linear transformation)
+    struct ggml_tensor *ffn =
+        ggml_add(ctx0, ggml_mul_mat(ctx0, layer.down_proj_w, gated_states),
+                 layer.down_proj_b);
+
+    inpL = ggml_add(ctx0, res, ffn);
     inpL = ggml_norm_inplace(ctx0, inpL, gte_hparams->layer_norm_eps);
     inpL = ggml_add(ctx0, ggml_mul(ctx0, inpL, layer.mlp_ln_w), layer.mlp_ln_b);
   }
 
   // Since we have unpadded tokens [D, N], we need to do pooling per batch
   // For simplicity, let's do mean pooling across all valid tokens per batch
-  
+
   // Create per-batch pooled results
-  std::vector<struct ggml_tensor*> batch_pooled;
+  std::vector<struct ggml_tensor *> batch_pooled;
   int token_offset = 0;
-  
+
   for (int b = 0; b < B; ++b) {
     // Count valid tokens for this batch
     int valid_tokens = 0;
@@ -311,24 +350,24 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
         valid_tokens++;
       }
     }
-    
+
     if (valid_tokens > 0) {
       // Extract tokens for this batch [D, valid_tokens]
-      auto *batch_tokens = ggml_view_2d(ctx0, inpL, D, valid_tokens, 
-                                        inpL->nb[1], token_offset * inpL->nb[1]);
-      
+      auto *batch_tokens = ggml_view_2d(
+          ctx0, inpL, D, valid_tokens, inpL->nb[1], token_offset * inpL->nb[1]);
+
       // Pool based on method
       struct ggml_tensor *batch_pooled_result;
       if (pooling_method == PoolingMethod::CLS) {
         // Use first token (CLS)
-        batch_pooled_result = ggml_view_2d(ctx0, batch_tokens, D, 1, 
-                                          batch_tokens->nb[1], 0);
+        batch_pooled_result =
+            ggml_view_2d(ctx0, batch_tokens, D, 1, batch_tokens->nb[1], 0);
       } else {
         // Mean pooling
         batch_pooled_result = ggml_mean(ctx0, batch_tokens);
         batch_pooled_result = ggml_reshape_2d(ctx0, batch_pooled_result, D, 1);
       }
-      
+
       batch_pooled.push_back(batch_pooled_result);
       token_offset += valid_tokens;
     } else {
@@ -338,7 +377,7 @@ struct ggml_cgraph *GteBertModel::BuildGraph(const std::vector<TokenizedInput> &
       batch_pooled.push_back(zero_tensor);
     }
   }
-  
+
   // Concatenate all batch results [D, B]
   auto *pooled = batch_pooled[0];
   for (int b = 1; b < B; ++b) {
