@@ -13,7 +13,8 @@ using namespace embeddings;
 void TestEmbedding(const std::string &model_file, bool normalize,
                    PoolingMethod pooling_method) {
   auto model = create_embedding(model_file);
-  std::vector<std::string> prompts = {"A blue cat.", "A blue cat"};
+  // std::vector<std::string> prompts = {"A blue cat.", "A blue cat"};
+  std::vector<std::string> prompts = {"A blue cat"};
   auto res = model->batch_encode(prompts, normalize, pooling_method);
   for (size_t i = 0; i < prompts.size(); i++) {
     std::cout << "prompt: " << prompts[i] << std::endl;
