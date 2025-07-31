@@ -30,13 +30,16 @@ DEFAULT_PROMPTS = [
     "机器学习是人工智能的一个重要分支。"
 ]
 
+# Supported quantization formats (in order of preference for discovery)
+QUANTIZATION_FORMATS = ['fp16', 'q8_0', 'q6_k', 'q5_k_m', 'q5_0', 'q4_k_m', 'q4_k', 'q4_0', 'q3_k_m', 'q2_k']
+
 # Model configurations - you may need to adjust pooling methods for specific models
 MODEL_CONFIGS = {
-    'BAAI/bge-m3': {'pooling': PoolingMethod.CLS},
-    'BAAI/bge-base-zh-v1.5': {'pooling': PoolingMethod.CLS},
-    'shibing624/text2vec-base-multilingual': {'pooling': PoolingMethod.MEAN},
-    'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2': {'pooling': PoolingMethod.MEAN},
-    'Snowflake/snowflake-arctic-embed-m-v2.0': {'pooling': PoolingMethod.CLS},
+    'BAAI/bge-m3': {'pooling': PoolingMethod.CLS, 'quantizations': ['fp16', 'q4_k', 'q6_k']},
+    'BAAI/bge-base-zh-v1.5': {'pooling': PoolingMethod.CLS, 'quantizations': ['fp16', 'q4_k', 'q6_k']},
+    'shibing624/text2vec-base-multilingual': {'pooling': PoolingMethod.MEAN, 'quantizations': ['fp16', 'q4_k', 'q6_k']},
+    'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2': {'pooling': PoolingMethod.MEAN, 'quantizations': ['fp16', 'q4_k', 'q6_k']},
+    'Snowflake/snowflake-arctic-embed-m-v2.0': {'pooling': PoolingMethod.CLS, 'quantizations': ['fp16', 'q4_k', 'q6_k']},
 }
 
 def load_models_list() -> List[str]:
@@ -62,11 +65,34 @@ def load_test_prompts() -> List[str]:
         print(f"Using default prompts (create {PROMPTS_TXT} to customize)")
         return DEFAULT_PROMPTS
 
-def get_gguf_filename(repo_name: str) -> str:
-    """Generate GGUF filename from repository name"""
+def get_available_quantizations(repo_name: str) -> List[str]:
+    """Discover available quantization files for a given model"""
+    model_name = repo_name.split('/')[-1]
+    available_quantizations = []
+    
+    # Check which quantization files exist
+    for quant in QUANTIZATION_FORMATS:
+        gguf_file = f"{model_name}.{quant}.gguf"
+        model_path = MODELS_DIR / gguf_file
+        if model_path.exists():
+            available_quantizations.append(quant)
+    
+    # If no files found, fall back to checking configured quantizations
+    if not available_quantizations:
+        config_quantizations = MODEL_CONFIGS.get(repo_name, {}).get('quantizations', ['fp16'])
+        for quant in config_quantizations:
+            gguf_file = f"{model_name}.{quant}.gguf"
+            model_path = MODELS_DIR / gguf_file
+            if model_path.exists():
+                available_quantizations.append(quant)
+    
+    return available_quantizations
+
+def get_gguf_filename(repo_name: str, quantization: str = 'fp16') -> str:
+    """Generate GGUF filename from repository name and quantization type"""
     # Convert repo name to filename format
     model_name = repo_name.split('/')[-1]  # Get model name after '/'
-    return f"{model_name}.fp16.gguf"
+    return f"{model_name}.{quantization}.gguf"
 
 def mean_pooling(hidden_state: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
     """Apply mean pooling to hidden states"""
@@ -77,9 +103,9 @@ def cls_pooling(hidden_state: torch.Tensor, attention_mask: torch.Tensor) -> tor
     """Apply CLS pooling (use first token)"""
     return hidden_state[:, 0]
 
-def run_embeddings_cpp(repo_name: str, prompts: List[str], normalize: bool = True) -> Optional[np.ndarray]:
+def run_embeddings_cpp(repo_name: str, prompts: List[str], quantization: str = 'fp16', normalize: bool = True) -> Optional[np.ndarray]:
     """Run embeddings using embeddings.cpp"""
-    gguf_file = get_gguf_filename(repo_name)
+    gguf_file = get_gguf_filename(repo_name, quantization)
     model_path = MODELS_DIR / gguf_file
     
     if not model_path.exists():
@@ -97,7 +123,7 @@ def run_embeddings_cpp(repo_name: str, prompts: List[str], normalize: bool = Tru
         return np.array(embeddings)
         
     except Exception as e:
-        print(f"Error running C++ embeddings for {repo_name}: {e}")
+        print(f"Error running C++ embeddings for {repo_name} ({quantization}): {e}")
         return None
 
 def run_transformers(repo_name: str, prompts: List[str], normalize: bool = True) -> Optional[np.ndarray]:
@@ -199,49 +225,27 @@ def compare_models(models: List[str], prompts: List[str]) -> List[dict]:
         print(f"Testing model: {repo_name}")
         print(f"{'='*60}")
         
-        # Run both implementations
-        cpp_embeddings = run_embeddings_cpp(repo_name, prompts)
+        # Get transformers embeddings once (baseline)
         transformers_embeddings = run_transformers(repo_name, prompts)
         
-        if cpp_embeddings is not None and transformers_embeddings is not None:
-            mse = calculate_mse(cpp_embeddings, transformers_embeddings)
-            cosine_sim, debug_info = calculate_cosine_similarity(cpp_embeddings, transformers_embeddings)
-            gguf_filename = get_gguf_filename(repo_name)
-            
+        if transformers_embeddings is None:
+            print(f"Failed to load transformers model for {repo_name}, skipping all quantizations")
+            continue
+        
+        # Get available quantizations for this model
+        available_quantizations = get_available_quantizations(repo_name)
+        
+        if not available_quantizations:
+            print(f"No GGUF files found for {repo_name}")
             result = {
                 'repo_name': repo_name,
-                'gguf_file_name': gguf_filename,
-                'mse': mse,
-                'cosine_similarity': cosine_sim,
-                'embedding_dim': cpp_embeddings.shape[1],
-                'num_prompts': len(prompts),
-                'status': 'success',
-                # Debug information
-                'cpp_first_10': str(debug_info['cpp_first_10']),
-                'transformers_first_10': str(debug_info['transformers_first_10']),
-                'cpp_last_10': str(debug_info['cpp_last_10']),
-                'transformers_last_10': str(debug_info['transformers_last_10']),
-                'individual_similarities': str(debug_info['individual_similarities']),
-                'cpp_norm': float(np.linalg.norm(cpp_embeddings[0])),
-                'transformers_norm': float(np.linalg.norm(transformers_embeddings[0]))
-            }
-            
-            print(f"MSE: {mse:.2e}")
-            print(f"Cosine Similarity: {cosine_sim:.6f}")
-            print(f"C++ embedding norm: {result['cpp_norm']:.6f}")
-            print(f"Transformers embedding norm: {result['transformers_norm']:.6f}")
-            print(f"Individual similarities: {debug_info['individual_similarities']}")
-            print(f"Embedding dimension: {cpp_embeddings.shape[1]}")
-            
-        else:
-            result = {
-                'repo_name': repo_name,
-                'gguf_file_name': get_gguf_filename(repo_name),
+                'quantization': 'N/A',
+                'gguf_file_name': 'N/A',
                 'mse': float('nan'),
                 'cosine_similarity': float('nan'),
                 'embedding_dim': 'N/A',
                 'num_prompts': len(prompts),
-                'status': 'failed',
+                'status': 'failed - no gguf files',
                 'cpp_first_10': 'N/A',
                 'transformers_first_10': 'N/A',
                 'cpp_last_10': 'N/A',
@@ -250,9 +254,70 @@ def compare_models(models: List[str], prompts: List[str]) -> List[dict]:
                 'cpp_norm': 'N/A',
                 'transformers_norm': 'N/A'
             }
-            print("Comparison failed - missing embeddings")
+            results.append(result)
+            continue
         
-        results.append(result)
+        print(f"Found quantizations: {available_quantizations}")
+        
+        # Test each available quantization
+        for quantization in available_quantizations:
+            print(f"\n--- Testing quantization: {quantization} ---")
+            
+            # Run C++ embeddings for this quantization
+            cpp_embeddings = run_embeddings_cpp(repo_name, prompts, quantization)
+            
+            if cpp_embeddings is not None:
+                mse = calculate_mse(cpp_embeddings, transformers_embeddings)
+                cosine_sim, debug_info = calculate_cosine_similarity(cpp_embeddings, transformers_embeddings)
+                gguf_filename = get_gguf_filename(repo_name, quantization)
+                
+                result = {
+                    'repo_name': repo_name,
+                    'quantization': quantization,
+                    'gguf_file_name': gguf_filename,
+                    'mse': mse,
+                    'cosine_similarity': cosine_sim,
+                    'embedding_dim': cpp_embeddings.shape[1],
+                    'num_prompts': len(prompts),
+                    'status': 'success',
+                    # Debug information
+                    'cpp_first_10': str(debug_info['cpp_first_10']),
+                    'transformers_first_10': str(debug_info['transformers_first_10']),
+                    'cpp_last_10': str(debug_info['cpp_last_10']),
+                    'transformers_last_10': str(debug_info['transformers_last_10']),
+                    'individual_similarities': str(debug_info['individual_similarities']),
+                    'cpp_norm': float(np.linalg.norm(cpp_embeddings[0])),
+                    'transformers_norm': float(np.linalg.norm(transformers_embeddings[0]))
+                }
+                
+                print(f"MSE: {mse:.2e}")
+                print(f"Cosine Similarity: {cosine_sim:.6f}")
+                print(f"C++ embedding norm: {result['cpp_norm']:.6f}")
+                print(f"Transformers embedding norm: {result['transformers_norm']:.6f}")
+                print(f"Individual similarities: {debug_info['individual_similarities']}")
+                print(f"Embedding dimension: {cpp_embeddings.shape[1]}")
+                
+            else:
+                result = {
+                    'repo_name': repo_name,
+                    'quantization': quantization,
+                    'gguf_file_name': get_gguf_filename(repo_name, quantization),
+                    'mse': float('nan'),
+                    'cosine_similarity': float('nan'),
+                    'embedding_dim': 'N/A',
+                    'num_prompts': len(prompts),
+                    'status': 'failed - cpp loading error',
+                    'cpp_first_10': 'N/A',
+                    'transformers_first_10': 'N/A',
+                    'cpp_last_10': 'N/A',
+                    'transformers_last_10': 'N/A',
+                    'individual_similarities': 'N/A',
+                    'cpp_norm': 'N/A',
+                    'transformers_norm': 'N/A'
+                }
+                print(f"Comparison failed for quantization {quantization}")
+            
+            results.append(result)
     
     return results
 
@@ -277,7 +342,10 @@ def save_debug_csv(results: List[dict], output_path: Path):
                 transformers_last_10 = eval(result['transformers_last_10'])
                 
                 # Create debug row with individual values
-                debug_row = {'repo_name': result['repo_name']}
+                debug_row = {
+                    'repo_name': result['repo_name'],
+                    'quantization': result['quantization']
+                }
                 
                 # Add first 10 values
                 for i in range(10):
@@ -297,7 +365,7 @@ def save_debug_csv(results: List[dict], output_path: Path):
                 
                 debug_data.append(debug_row)
             except:
-                print(f"Warning: Could not parse debug data for {result['repo_name']}")
+                print(f"Warning: Could not parse debug data for {result['repo_name']} ({result['quantization']})")
     
     if debug_data:
         with open(output_path, 'w', newline='', encoding='utf-8') as f:
@@ -313,35 +381,58 @@ def save_results_markdown(results: List[dict], output_path: Path):
         
         # Summary table
         f.write("## Results Summary\n\n")
-        f.write("| Repository Name | GGUF File | MSE | Cosine Similarity | Status |\n")
-        f.write("|----------------|-----------|-----|-------------------|--------|\n")
+        f.write("| Repository Name | Quantization | GGUF File | MSE | Cosine Similarity | Status |\n")
+        f.write("|----------------|-------------|-----------|-----|-------------------|--------|\n")
         
         for result in results:
             repo = result['repo_name']
+            quant = result.get('quantization', 'N/A')
             gguf = result['gguf_file_name']
             mse = f"{result['mse']:.2e}" if not np.isnan(result['mse']) else "N/A"
             cosine_sim = f"{result['cosine_similarity']:.6f}" if not np.isnan(result['cosine_similarity']) else "N/A"
             status = result['status']
-            f.write(f"| {repo} | {gguf} | {mse} | {cosine_sim} | {status} |\n")
+            f.write(f"| {repo} | {quant} | {gguf} | {mse} | {cosine_sim} | {status} |\n")
         
-        # Detailed results
+        # Group results by model for detailed view
         f.write("\n## Detailed Results\n\n")
+        models_grouped = {}
         for result in results:
-            f.write(f"### {result['repo_name']}\n\n")
-            f.write(f"- **GGUF File**: `{result['gguf_file_name']}`\n")
-            mse_str = f"{result['mse']:.2e}" if not np.isnan(result['mse']) else 'N/A'
-            cosine_sim_str = f"{result['cosine_similarity']:.6f}" if not np.isnan(result['cosine_similarity']) else 'N/A'
-            f.write(f"- **MSE**: {mse_str}\n")
-            f.write(f"- **Cosine Similarity**: {cosine_sim_str}\n")
-            f.write(f"- **Embedding Dimension**: {result['embedding_dim']}\n")
-            f.write(f"- **Number of Test Prompts**: {result['num_prompts']}\n")
-            f.write(f"- **Status**: {result['status']}\n")
+            repo_name = result['repo_name']
+            if repo_name not in models_grouped:
+                models_grouped[repo_name] = []
+            models_grouped[repo_name].append(result)
+        
+        for repo_name, repo_results in models_grouped.items():
+            f.write(f"### {repo_name}\n\n")
             
-            # Add debug information if available
-            if result['status'] == 'success':
-                f.write(f"- **C++ Embedding Norm**: {result['cpp_norm']:.6f}\n")
-                f.write(f"- **Transformers Embedding Norm**: {result['transformers_norm']:.6f}\n")
-                f.write(f"- **Individual Similarities**: {result['individual_similarities']}\n")
+            # Create comparison table for this model across quantizations
+            f.write("| Quantization | GGUF File | MSE | Cosine Similarity | Status | C++ Norm | Transformers Norm |\n")
+            f.write("|-------------|-----------|-----|-------------------|--------|----------|------------------|\n")
+            
+            for result in repo_results:
+                quant = result.get('quantization', 'N/A')
+                gguf = result['gguf_file_name']
+                mse_str = f"{result['mse']:.2e}" if not np.isnan(result['mse']) else 'N/A'
+                cosine_sim_str = f"{result['cosine_similarity']:.6f}" if not np.isnan(result['cosine_similarity']) else 'N/A'
+                status = result['status']
+                cpp_norm = f"{result['cpp_norm']:.6f}" if result['cpp_norm'] != 'N/A' else 'N/A'
+                trans_norm = f"{result['transformers_norm']:.6f}" if result['transformers_norm'] != 'N/A' else 'N/A'
+                
+                f.write(f"| {quant} | `{gguf}` | {mse_str} | {cosine_sim_str} | {status} | {cpp_norm} | {trans_norm} |\n")
+            
+            # Add detailed information for successful results
+            successful_results = [r for r in repo_results if r['status'] == 'success']
+            if successful_results:
+                f.write(f"\n**Common Properties:**\n")
+                first_result = successful_results[0]
+                f.write(f"- **Embedding Dimension**: {first_result['embedding_dim']}\n")
+                f.write(f"- **Number of Test Prompts**: {first_result['num_prompts']}\n")
+                
+                # Show best and worst performing quantizations
+                successful_results.sort(key=lambda x: x['cosine_similarity'], reverse=True)
+                f.write(f"- **Best Quantization**: {successful_results[0]['quantization']} (Cosine Similarity: {successful_results[0]['cosine_similarity']:.6f})\n")
+                if len(successful_results) > 1:
+                    f.write(f"- **Worst Quantization**: {successful_results[-1]['quantization']} (Cosine Similarity: {successful_results[-1]['cosine_similarity']:.6f})\n")
             
             f.write("\n")
 
@@ -382,7 +473,28 @@ def main():
     
     # Print summary
     successful = sum(1 for r in results if r['status'] == 'success')
-    print(f"\nSummary: {successful}/{len(results)} models tested successfully")
+    total_tests = len(results)
+    unique_models = len(set(r['repo_name'] for r in results))
+    
+    print(f"\nSummary: {successful}/{total_tests} tests passed successfully")
+    print(f"Tested {unique_models} unique models with multiple quantizations")
+    
+    # Show quantization summary
+    if results:
+        quantization_summary = {}
+        for result in results:
+            if 'quantization' in result:
+                quant = result['quantization']
+                if quant not in quantization_summary:
+                    quantization_summary[quant] = {'total': 0, 'success': 0}
+                quantization_summary[quant]['total'] += 1
+                if result['status'] == 'success':
+                    quantization_summary[quant]['success'] += 1
+        
+        print(f"\nQuantization Summary:")
+        for quant, stats in quantization_summary.items():
+            success_rate = (stats['success'] / stats['total']) * 100 if stats['total'] > 0 else 0
+            print(f"  {quant}: {stats['success']}/{stats['total']} ({success_rate:.1f}%)")
 
 if __name__ == "__main__":
     main()
