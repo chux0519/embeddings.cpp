@@ -84,17 +84,6 @@ struct ggml_arm_arch_features_type {
 #endif
 
 
-#if defined(_WIN32)
-
-#define WIN32_LEAN_AND_MEAN
-#ifndef NOMINMAX
-    #define NOMINMAX
-#endif
-#include <windows.h>
-
-#if defined(_MSC_VER) && !defined(__clang__)
-#define GGML_CACHE_ALIGN __declspec(align(GGML_CACHE_LINE))
-
 static void print_t_f16(const char* title, struct ggml_tensor * t, int n) {
     printf("%s\n", title);
 
@@ -163,6 +152,17 @@ static void print_t_f32(const char* title, struct ggml_tensor * t, int n) {
     }
     printf("sum:  %f\n\n", sum);
 }
+
+#if defined(_WIN32)
+
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+    #define NOMINMAX
+#endif
+#include <windows.h>
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#define GGML_CACHE_ALIGN __declspec(align(GGML_CACHE_LINE))
 
 typedef volatile LONG atomic_int;
 typedef atomic_int atomic_bool;

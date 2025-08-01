@@ -5,8 +5,9 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "MSVC Runtime Library" FORCE)
-add_compile_options("/utf-8")
-
+if (WIN32)
+    add_compile_options("/utf-8")
+endif()
 add_subdirectory(ggml)
 include_directories(ggml/include)
 
@@ -26,7 +27,6 @@ set(EMBEDDING_SOURCES
 )
 add_library(embeddings STATIC ${EMBEDDING_SOURCES})
 target_link_libraries(embeddings PUBLIC ggml tokenizers_cpp)
-
 add_executable(embedding_cli src/cli.cpp)
 add_executable(quantize src/quantize.cpp)
 add_executable(test_embedding tests/test_embedding.cpp)

@@ -109,6 +109,13 @@ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
       -DGGML_METAL=ON \
       -DGGML_METAL_EMBED_LIBRARY=ON \
       -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON ..
+```
+
+If you encountered openmp's bug, try
+
+> brew install libomp
+>
+> export OpenMP_ROOT=$(brew --prefix)/opt/libomp
 
 ### Windows
 
