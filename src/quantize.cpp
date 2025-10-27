@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <cstring>
 
 #include "ggml.h"
 #include "gguf.h"

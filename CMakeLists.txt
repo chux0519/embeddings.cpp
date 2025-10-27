@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "MSVC Runtime Library" FORCE)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 add_subdirectory(ggml)
 include_directories(ggml/include)
