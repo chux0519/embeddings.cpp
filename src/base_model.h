@@ -19,7 +19,7 @@
 
 namespace embeddings {
 // Forward declaration
-struct Encoding;
+struct TokenizedInput;
 
 // Base configuration interface
 struct BaseConfig {
@@ -64,16 +64,16 @@ class BaseModel {
   // NEW: Forward and BatchForward are no longer pure virtual functions, their
   // implementations are generic
   std::vector<float> Forward(
-      const Encoding &enc, bool normalize = true,
+      const TokenizedInput &enc, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN);
   std::vector<std::vector<float>> BatchForward(
-      const std::vector<Encoding> &batch, bool normalize = true,
+      const std::vector<TokenizedInput> &batch, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN);
 
  protected:
   // Pure virtual function - subclasses must implement
   virtual struct ggml_cgraph *BuildGraph(
-      const std::vector<Encoding> &batch, bool normalize = true,
+      const std::vector<TokenizedInput> &batch, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN) = 0;
 
   // NEW: New pure virtual functions, subclasses must implement to load their
@@ -86,7 +86,7 @@ class BaseModel {
   void Clear();
 
   struct ggml_cgraph *CommonBatchForwardSetup(
-      const std::vector<Encoding> &batch, bool normalize,
+      const std::vector<TokenizedInput> &batch, bool normalize,
       PoolingMethod pooling_method);
   std::vector<std::vector<float>> ExtractResults(struct ggml_cgraph *graph,
                                                  int batch_size,
@@ -101,61 +101,6 @@ class BaseModel {
 
  private:
   void LoadModelImpl(const std::string &gguf_model);
-};
-
-// Base embedding wrapper class
-template <typename ModelType>
-class BaseEmbedding {
- public:
-  BaseEmbedding(const std::string &gguf_model) {
-    // 1. Read tokenizer json from gguf
-    struct ggml_context *ctx_ggml = NULL;
-    struct gguf_init_params params = {true, &ctx_ggml};
-    struct gguf_context *ctx_gguf =
-        gguf_init_from_file(gguf_model.c_str(), params);
-    if (!ctx_gguf) {
-      throw std::runtime_error("failed to load GGUF from " + gguf_model);
-    }
-    std::string tokenizer_json = get_str(ctx_gguf, "tokenizer.ggml.file");
-    gguf_free(ctx_gguf);
-    ggml_free(ctx_ggml);
-
-    if (tokenizer_json.empty()) {
-      throw std::runtime_error("tokenizer.ggml.file not found in GGUF: " +
-                               gguf_model);
-    }
-
-    // 2. Init tokenizer from json blob
-    tok = new Tokenizer(tokenizer_json, true);
-
-    // 3. Init model
-    model = new ModelType(gguf_model);
-    model->Load();
-  }
-
-  virtual ~BaseEmbedding() {
-    delete tok;
-    delete model;
-  }
-
-  std::vector<float> Encode(
-      const std::string &text, bool normalize = true,
-      PoolingMethod pooling_method = PoolingMethod::MEAN) {
-    std::vector<std::string> batch = {text};
-    return BatchEncode(batch, normalize, pooling_method)[0];
-  }
-
-  std::vector<std::vector<float>> BatchEncode(
-      const std::vector<std::string> &batch, bool normalize = true,
-      PoolingMethod pooling_method = PoolingMethod::MEAN) {
-    auto encodings = tok->EncodeBatch(batch);
-    auto embeddings = model->BatchForward(encodings, normalize, pooling_method);
-    return embeddings;
-  }
-
- protected:
-  Tokenizer *tok = nullptr;
-  ModelType *model = nullptr;
 };
 
 }  // namespace embeddings

@@ -1,33 +1,68 @@
 """
-embeddings.cpp Python bindings
+A unified embedding library for various models.
 """
 from __future__ import annotations
 import typing
-__all__ = ['Embedding', 'Encoding', 'JinaEmbedding', 'Tokenizer', 'Tokens', 'TokensBatch']
+__all__ = ['CLS', 'Embedding', 'MEAN', 'PoolingMethod', 'TokenizedInput', 'create_embedding']
 class Embedding:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
-    def __init__(self, hf_token_json: str, gguf_model: str) -> None:
-        ...
-    def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: int = 0) -> list[list[float]]:
+    def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: PoolingMethod = ...) -> list[list[float]]:
         """
         Encodes a batch of strings into a list of float vectors.
         """
-    def encode(self, text: str, normalize: bool = True, pooling_method: int = 0) -> list[float]:
+    def batch_tokenize(self, texts: list[str], add_special_tokens: bool = True) -> list[TokenizedInput]:
+        """
+        Tokenizes a batch of strings into token IDs and attention masks.
+        """
+    def encode(self, text: str, normalize: bool = True, pooling_method: PoolingMethod = ...) -> list[float]:
         """
         Encodes a single string into a vector of floats.
         """
-class Encoding:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
+    def tokenize(self, text: str, add_special_tokens: bool = True) -> TokenizedInput:
+        """
+        Tokenizes a single string into token IDs and attention mask.
+        """
+class PoolingMethod:
+    """
+    Members:
+    
+      MEAN
+    
+      CLS
+    """
+    CLS: typing.ClassVar[PoolingMethod]  # value = <PoolingMethod.CLS: 1>
+    MEAN: typing.ClassVar[PoolingMethod]  # value = <PoolingMethod.MEAN: 0>
+    __members__: typing.ClassVar[dict[str, PoolingMethod]]  # value = {'MEAN': <PoolingMethod.MEAN: 0>, 'CLS': <PoolingMethod.CLS: 1>}
+    def __eq__(self, other: typing.Any) -> bool:
         ...
-    def __init__(self) -> None:
+    def __getstate__(self) -> int:
         ...
+    def __hash__(self) -> int:
+        ...
+    def __index__(self) -> int:
+        ...
+    def __init__(self, value: int) -> None:
+        ...
+    def __int__(self) -> int:
+        ...
+    def __ne__(self, other: typing.Any) -> bool:
+        ...
+    def __repr__(self) -> str:
+        ...
+    def __setstate__(self, state: int) -> None:
+        ...
+    def __str__(self) -> str:
+        ...
+    @property
+    def name(self) -> str:
+        ...
+    @property
+    def value(self) -> int:
+        ...
+class TokenizedInput:
     @property
     def attention_mask(self) -> list[int]:
         """
-        Attention mask for the encoding.
+        Attention mask
         """
     @attention_mask.setter
     def attention_mask(self, arg0: list[int]) -> None:
@@ -35,240 +70,22 @@ class Encoding:
     @property
     def ids(self) -> list[int]:
         """
-        Token IDs of the encoding.
+        Token IDs
         """
     @ids.setter
     def ids(self, arg0: list[int]) -> None:
         ...
-class JinaEmbedding:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
+    @property
+    def no_pad_len(self) -> int:
+        """
+        Length without padding
+        """
+    @no_pad_len.setter
+    def no_pad_len(self, arg0: int) -> None:
         ...
-    def __init__(self, hf_token_json: str, gguf_model: str) -> None:
-        ...
-    def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: int = 0) -> list[list[float]]:
-        """
-        Encodes a batch of strings into a list of float vectors.
-        """
-    def encode(self, text: str, normalize: bool = True, pooling_method: int = 0) -> list[float]:
-        """
-        Encodes a single string into a vector of floats.
-        """
-class Tokenizer:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
-    def __init__(self, path: str) -> None:
-        ...
-    def decode(self, tokens: list[int], skip_special_tokens: bool = True) -> str:
-        """
-        Decodes tokens into a string.
-        """
-    def encode(self, text: str, add_special_tokens: bool = True) -> Encoding:
-        """
-        Encodes a single string into tokens.
-        """
-    def encode_batch(self, texts: list[str], add_special_tokens: bool = True) -> list[Encoding]:
-        """
-        Encodes a batch of strings into tokens.
-        """
-class Tokens:
-    __hash__: typing.ClassVar[None] = None
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
-    def __bool__(self: list[int]) -> bool:
-        """
-        Check whether the list is nonempty
-        """
-    def __contains__(self: list[int], x: int) -> bool:
-        """
-        Return true the container contains ``x``
-        """
-    @typing.overload
-    def __delitem__(self: list[int], arg0: int) -> None:
-        """
-        Delete the list elements at index ``i``
-        """
-    @typing.overload
-    def __delitem__(self: list[int], arg0: slice) -> None:
-        """
-        Delete list elements using a slice object
-        """
-    def __eq__(self: list[int], arg0: list[int]) -> bool:
-        ...
-    @typing.overload
-    def __getitem__(self: list[int], s: slice) -> list[int]:
-        """
-        Retrieve list elements using a slice object
-        """
-    @typing.overload
-    def __getitem__(self: list[int], arg0: int) -> int:
-        ...
-    @typing.overload
-    def __init__(self) -> None:
-        ...
-    @typing.overload
-    def __init__(self, arg0: list[int]) -> None:
-        """
-        Copy constructor
-        """
-    @typing.overload
-    def __init__(self, arg0: typing.Iterable) -> None:
-        ...
-    def __iter__(self: list[int]) -> typing.Iterator[int]:
-        ...
-    def __len__(self: list[int]) -> int:
-        ...
-    def __ne__(self: list[int], arg0: list[int]) -> bool:
-        ...
-    def __repr__(self: list[int]) -> str:
-        """
-        Return the canonical string representation of this list.
-        """
-    @typing.overload
-    def __setitem__(self: list[int], arg0: int, arg1: int) -> None:
-        ...
-    @typing.overload
-    def __setitem__(self: list[int], arg0: slice, arg1: list[int]) -> None:
-        """
-        Assign list elements using a slice object
-        """
-    def append(self: list[int], x: int) -> None:
-        """
-        Add an item to the end of the list
-        """
-    def clear(self: list[int]) -> None:
-        """
-        Clear the contents
-        """
-    def count(self: list[int], x: int) -> int:
-        """
-        Return the number of times ``x`` appears in the list
-        """
-    @typing.overload
-    def extend(self: list[int], L: list[int]) -> None:
-        """
-        Extend the list by appending all the items in the given list
-        """
-    @typing.overload
-    def extend(self: list[int], L: typing.Iterable) -> None:
-        """
-        Extend the list by appending all the items in the given list
-        """
-    def insert(self: list[int], i: int, x: int) -> None:
-        """
-        Insert an item at a given position.
-        """
-    @typing.overload
-    def pop(self: list[int]) -> int:
-        """
-        Remove and return the last item
-        """
-    @typing.overload
-    def pop(self: list[int], i: int) -> int:
-        """
-        Remove and return the item at index ``i``
-        """
-    def remove(self: list[int], x: int) -> None:
-        """
-        Remove the first item from the list whose value is x. It is an error if there is no such item.
-        """
-class TokensBatch:
-    __hash__: typing.ClassVar[None] = None
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
-    def __bool__(self: list[list[int]]) -> bool:
-        """
-        Check whether the list is nonempty
-        """
-    def __contains__(self: list[list[int]], x: list[int]) -> bool:
-        """
-        Return true the container contains ``x``
-        """
-    @typing.overload
-    def __delitem__(self: list[list[int]], arg0: int) -> None:
-        """
-        Delete the list elements at index ``i``
-        """
-    @typing.overload
-    def __delitem__(self: list[list[int]], arg0: slice) -> None:
-        """
-        Delete list elements using a slice object
-        """
-    def __eq__(self: list[list[int]], arg0: list[list[int]]) -> bool:
-        ...
-    @typing.overload
-    def __getitem__(self: list[list[int]], s: slice) -> list[list[int]]:
-        """
-        Retrieve list elements using a slice object
-        """
-    @typing.overload
-    def __getitem__(self: list[list[int]], arg0: int) -> list[int]:
-        ...
-    @typing.overload
-    def __init__(self) -> None:
-        ...
-    @typing.overload
-    def __init__(self, arg0: list[list[int]]) -> None:
-        """
-        Copy constructor
-        """
-    @typing.overload
-    def __init__(self, arg0: typing.Iterable) -> None:
-        ...
-    def __iter__(self: list[list[int]]) -> typing.Iterator[list[int]]:
-        ...
-    def __len__(self: list[list[int]]) -> int:
-        ...
-    def __ne__(self: list[list[int]], arg0: list[list[int]]) -> bool:
-        ...
-    @typing.overload
-    def __setitem__(self: list[list[int]], arg0: int, arg1: list[int]) -> None:
-        ...
-    @typing.overload
-    def __setitem__(self: list[list[int]], arg0: slice, arg1: list[list[int]]) -> None:
-        """
-        Assign list elements using a slice object
-        """
-    def append(self: list[list[int]], x: list[int]) -> None:
-        """
-        Add an item to the end of the list
-        """
-    def clear(self: list[list[int]]) -> None:
-        """
-        Clear the contents
-        """
-    def count(self: list[list[int]], x: list[int]) -> int:
-        """
-        Return the number of times ``x`` appears in the list
-        """
-    @typing.overload
-    def extend(self: list[list[int]], L: list[list[int]]) -> None:
-        """
-        Extend the list by appending all the items in the given list
-        """
-    @typing.overload
-    def extend(self: list[list[int]], L: typing.Iterable) -> None:
-        """
-        Extend the list by appending all the items in the given list
-        """
-    def insert(self: list[list[int]], i: int, x: list[int]) -> None:
-        """
-        Insert an item at a given position.
-        """
-    @typing.overload
-    def pop(self: list[list[int]]) -> list[int]:
-        """
-        Remove and return the last item
-        """
-    @typing.overload
-    def pop(self: list[list[int]], i: int) -> list[int]:
-        """
-        Remove and return the item at index ``i``
-        """
-    def remove(self: list[list[int]], x: list[int]) -> None:
-        """
-        Remove the first item from the list whose value is x. It is an error if there is no such item.
-        """
+def create_embedding(gguf_path: str) -> Embedding:
+    """
+    Creates a ready-to-use embedding model from a GGUF file.
+    """
+CLS: PoolingMethod  # value = <PoolingMethod.CLS: 1>
+MEAN: PoolingMethod  # value = <PoolingMethod.MEAN: 0>

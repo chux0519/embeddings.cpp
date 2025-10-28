@@ -20,14 +20,15 @@ Tokenizer::Tokenizer(const std::string &json_blob, bool /* is_blob */) {
   tok = tok_.release();
 }
 
-Encoding Tokenizer::Encode(const std::string &text, bool add_special_tokens) {
+TokenizedInput Tokenizer::Encode(const std::string &text,
+                                 bool add_special_tokens) {
   std::vector<std::string> texts = {text};
   return EncodeBatch(texts, add_special_tokens)[0];
 }
 
-std::vector<Encoding> Tokenizer::EncodeBatch(
+std::vector<TokenizedInput> Tokenizer::EncodeBatch(
     const std::vector<std::string> &texts, bool add_special_tokens) {
-  std::vector<Encoding> results;
+  std::vector<TokenizedInput> results;
 
   auto hf_results = tok->EncodeBatch(texts, add_special_tokens);
   if (hf_results.empty()) {
@@ -52,10 +53,9 @@ std::vector<Encoding> Tokenizer::EncodeBatch(
     size_t max_size = 0;
     for (auto &enc : results) {
       for (size_t pos = 0; pos < enc.attention_mask.size(); pos++) {
-        if (enc.attention_mask[pos] == 0) {
-          enc.no_pad_len = pos;
-          if (pos > max_size) max_size = pos;
-          break;
+        if (enc.attention_mask[pos] == 1) {
+          enc.no_pad_len = pos + 1;
+          if (pos + 1 > max_size) max_size = pos + 1;
         }
       }
     }

@@ -1,0 +1,5 @@
+# Test prompts for embedding alignment comparison
+# Lines starting with # are comments and will be ignored
+# Add one prompt per line
+A cute cat....
+A cute cat.

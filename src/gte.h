@@ -46,7 +46,7 @@ struct GteBertModel : public BaseModel {
 
  protected:
   struct ggml_cgraph *BuildGraph(
-      const std::vector<Encoding> &batch, bool normalize,
+      const std::vector<TokenizedInput> &batch, bool normalize,
       PoolingMethod pooling_method = PoolingMethod::MEAN) override;
   void LoadHyperparameters(struct gguf_context *ctx_gguf) override;
   void LoadTensors() override;
@@ -54,12 +54,6 @@ struct GteBertModel : public BaseModel {
  public:
   GteBertEmbeddings embeddings;
   std::vector<GteBertLayer> layers;
-};
-
-struct GteEmbedding : public BaseEmbedding<GteBertModel> {
-  GteEmbedding() = default;
-  GteEmbedding(const std::string &gguf_model)
-      : BaseEmbedding<GteBertModel>(gguf_model) {}
 };
 
 }  // namespace embeddings
