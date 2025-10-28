@@ -84,6 +84,75 @@ struct ggml_arm_arch_features_type {
 #endif
 
 
+static void print_t_f16(const char* title, struct ggml_tensor * t, int n) {
+    printf("%s\n", title);
+
+    const ggml_fp16_t * data = (ggml_fp16_t *) t->data;
+
+    printf("dims: %jd %jd %jd %jd f16\n", t->ne[0], t->ne[1], t->ne[2], t->ne[3]);
+    printf("First & Last %d elements:\n", n);
+    for (int i = 0; i < MIN((int) (t->ne[0]*t->ne[1]), n); i++) {
+        printf("%.5f ", (double)GGML_FP16_TO_FP32(data[i]));
+        if (i != 0 && i % t->ne[0] == 0) {
+            printf("\n");
+        }
+    }
+    printf("\n");
+    for (int i = 0; i < MIN((int) (t->ne[0]*t->ne[1]), n); i++) {
+        printf("%.5f ", (double)GGML_FP16_TO_FP32(data[ggml_nelements(t) - n + i]));
+        if ((ggml_nelements(t) - n + i) % t->ne[0] == 0) {
+            printf("\n");
+        }
+    }
+    printf("\n");
+    double sum = 0.0;
+    for (int i = 0; i < ggml_nelements(t); i++) {
+        float d = GGML_FP16_TO_FP32(data[i]);
+        if (!isnan(d) && !isinf(d)) {
+            sum += (double)d;
+        }
+    }
+    printf("sum:  %f\n\n", sum);
+}
+
+static void print_t_f32(const char* title, struct ggml_tensor * t, int n) {
+    printf("%s\n", title);
+
+    const float * data = (const float *) t->data;
+
+    printf("dims: %jd %jd %jd %jd f32\n", t->ne[0], t->ne[1], t->ne[2], t->ne[3]);
+    printf("First & Last %d elements:\n", n);
+
+    // 打印前 n 个元素
+    for (int i = 0; i < MIN((int)(t->ne[0] * t->ne[1]), n); i++) {
+        printf("%.5f ", data[i]);
+        if (i != 0 && i % t->ne[0] == 0) {
+            printf("\n");
+        }
+    }
+    printf("\n");
+
+    // 打印最后 n 个元素
+    for (int i = 0; i < MIN((int)(t->ne[0] * t->ne[1]), n); i++) {
+        int idx = ggml_nelements(t) - n + i;
+        printf("%.5f ", data[idx]);
+        if (idx % t->ne[0] == 0) {
+            printf("\n");
+        }
+    }
+    printf("\n");
+
+    // 求和
+    double sum = 0.0;
+    for (int i = 0; i < ggml_nelements(t); i++) {
+        float d = data[i];
+        if (!isnan(d) && !isinf(d)) {
+            sum += (double)d;
+        }
+    }
+    printf("sum:  %f\n\n", sum);
+}
+
 #if defined(_WIN32)
 
 #define WIN32_LEAN_AND_MEAN
@@ -2069,6 +2138,14 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
             {
                 GGML_ABORT("fatal error");
             }
+    }
+    
+    if (strstr(tensor->name, "debug") != NULL && params->ith + 1 == params->nth) {
+        if (tensor->type == GGML_TYPE_F16) {
+            print_t_f16(tensor->name, tensor, 10);
+        } else {
+            fprintf(stderr, "%s: error: unsupported type %d\n", __func__, tensor->type);
+        }
     }
 }
 

@@ -9,7 +9,7 @@ struct BertConfig : public BaseConfig {
   int32_t intermediate_size = 0;
 };
 
-struct BertEmbedding {
+struct BertEmbeddings {
   struct ggml_tensor *word_embeddings;
   struct ggml_tensor *token_type_embeddings;
   struct ggml_tensor *position_embeddings;
@@ -49,19 +49,14 @@ class BertModel : public BaseModel {
 
  protected:
   struct ggml_cgraph *BuildGraph(
-      const std::vector<Encoding> &batch, bool normalize = true,
+      const std::vector<TokenizedInput> &batch, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN) override;
   void LoadHyperparameters(struct gguf_context *ctx_gguf) override;
   void LoadTensors() override;
 
  private:
-  BertEmbedding embeddings;
+  BertEmbeddings embeddings;
   std::vector<EncoderBlock> layers;
 };
 
-class Embedding : public BaseEmbedding<BertModel> {
- public:
-  Embedding(const std::string &gguf_model)
-      : BaseEmbedding<BertModel>(gguf_model) {}
-};
 }  // namespace embeddings

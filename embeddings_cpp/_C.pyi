@@ -3,25 +3,8 @@ embeddings.cpp Python bindings
 """
 from __future__ import annotations
 import typing
-__all__ = ['Embedding', 'Encoding', 'JinaEmbedding', 'Tokenizer', 'Tokens', 'TokensBatch']
-class Embedding:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
-    def __init__(self, hf_token_json: str, gguf_model: str) -> None:
-        ...
-    def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: int = 0) -> list[list[float]]:
-        """
-        Encodes a batch of strings into a list of float vectors.
-        """
-    def encode(self, text: str, normalize: bool = True, pooling_method: int = 0) -> list[float]:
-        """
-        Encodes a single string into a vector of floats.
-        """
+__all__: list[str] = ['Encoding', 'Tokenizer', 'Tokens', 'TokensBatch']
 class Encoding:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
     def __init__(self) -> None:
         ...
     @property
@@ -40,24 +23,7 @@ class Encoding:
     @ids.setter
     def ids(self, arg0: list[int]) -> None:
         ...
-class JinaEmbedding:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
-    def __init__(self, hf_token_json: str, gguf_model: str) -> None:
-        ...
-    def batch_encode(self, texts: list[str], normalize: bool = True, pooling_method: int = 0) -> list[list[float]]:
-        """
-        Encodes a batch of strings into a list of float vectors.
-        """
-    def encode(self, text: str, normalize: bool = True, pooling_method: int = 0) -> list[float]:
-        """
-        Encodes a single string into a vector of floats.
-        """
 class Tokenizer:
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
     def __init__(self, path: str) -> None:
         ...
     def decode(self, tokens: list[int], skip_special_tokens: bool = True) -> str:
@@ -74,9 +40,6 @@ class Tokenizer:
         """
 class Tokens:
     __hash__: typing.ClassVar[None] = None
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
     def __bool__(self: list[int]) -> bool:
         """
         Check whether the list is nonempty
@@ -176,9 +139,6 @@ class Tokens:
         """
 class TokensBatch:
     __hash__: typing.ClassVar[None] = None
-    @staticmethod
-    def _pybind11_conduit_v1_(*args, **kwargs):
-        ...
     def __bool__(self: list[list[int]]) -> bool:
         """
         Check whether the list is nonempty

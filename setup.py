@@ -85,8 +85,8 @@ class CMakeBuild(build_ext):
             # Specify the arch if using MSVC generator, but only if it doesn't
             # contain a backward-compatibility arch spec already in the
             # generator name.
-            if not single_config and not contains_arch:
-                cmake_args += ["-A", PLAT_TO_CMAKE[self.plat_name]]
+            # if not single_config and not contains_arch:
+            #     cmake_args += ["-A", PLAT_TO_CMAKE[self.plat_name]]
 
             # Multi-config generators have a different way to specify configs
             if not single_config:
@@ -112,9 +112,8 @@ class CMakeBuild(build_ext):
         # Compile in parallel by default
         build_args += [f"-j"]
 
-        build_temp = Path(self.build_temp) / ext.name
-        if not build_temp.exists():
-            build_temp.mkdir(parents=True)
+        build_temp = os.path.abspath(os.path.join(os.path.dirname(__file__), "build", "tmp"))
+        os.makedirs(build_temp, exist_ok=True)
 
         subprocess.run(["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True)
         subprocess.run(["cmake", "--build", ".", *build_args], cwd=build_temp, check=True)

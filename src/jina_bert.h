@@ -44,7 +44,7 @@ class JinaBertModel : public BaseModel {
 
  protected:
   struct ggml_cgraph *BuildGraph(
-      const std::vector<Encoding> &batch, bool normalize = true,
+      const std::vector<TokenizedInput> &batch, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN) override;
   void LoadHyperparameters(struct gguf_context *ctx_gguf) override;
   void LoadTensors() override;
@@ -52,12 +52,6 @@ class JinaBertModel : public BaseModel {
  private:
   JinaBertEmbedding embeddings;
   std::vector<JinaEncoderBlock> layers;
-};
-
-class JinaEmbedding : public BaseEmbedding<JinaBertModel> {
- public:
-  JinaEmbedding(const std::string &gguf_model)
-      : BaseEmbedding<JinaBertModel>(gguf_model) {}
 };
 
 }  // namespace embeddings

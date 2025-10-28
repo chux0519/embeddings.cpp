@@ -130,7 +130,7 @@ def convert_hf(repo_id, output_path, float_type='f16'):
     # load tokenizer and model
     print(f"Loading tokenizer and model for '{repo_id}'...")
     tokenizer = AutoTokenizer.from_pretrained(repo_id)
-    model = AutoModel.from_pretrained(repo_id, add_pooling_layer=False, trust_remote_code=True)
+    model = AutoModel.from_pretrained(repo_id, add_pooling_layer=False, trust_remote_code=True, use_memory_efficient_attention=False)
     print("Model and tokenizer loaded.")
     
     hf_config = model.config

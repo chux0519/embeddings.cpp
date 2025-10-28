@@ -34,23 +34,57 @@ python scripts/convert.py BAAI/bge-m3 ./models/bge-m3.fp16.gguf f16
 # Convert BGE-Base Chinese v1.5 model
 python scripts/convert.py BAAI/bge-base-zh-v1.5 ./models/bge-base-zh-v1.5.fp16.gguf f16
 
+uv run scripts/convert.py Snowflake/snowflake-arctic-embed-m-v2.0 ./models/snowflake-arctic-embed-m-v2.0.fp16.gguf f16
+
 # Convert Text2Vec multilingual model
 python scripts/convert.py shibing624/text2vec-base-multilingual ./models/text2vec-base-multilingual.fp16.gguf f16
 
 python scripts/convert.py sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 ./models/paraphrase-multilingual-MiniLM-L12-v2.fp16.gguf f16
 ```
 
-## Running Tests
+## Model Quantization
 
-Execute the embedding tests:
+After converting models to GGUF format, you can quantize them to reduce memory usage and improve inference speed:
+
 ```bash
-./build/test_embedding
+# Build the quantization tool
+cmake --build build --target quantize
+
+# Quantize a model (example with different quantization types)
+./build/quantize ./models/bge-m3.fp16.gguf ./models/bge-m3.q4_k.gguf q4_k
+./build/quantize ./models/bge-m3.fp16.gguf ./models/bge-m3.q6_k.gguf q6_k
+./build/quantize ./models/bge-m3.fp16.gguf ./models/bge-m3.q8_0.gguf q8_0
+
+# On Windows
+.\build\Release\quantize.exe .\models\bge-m3.fp16.gguf .\models\bge-m3.q4_k.gguf q4_k
 ```
 
-## Running Notebooks
+### Supported Quantization Types
 
-Before running the notebooks, install embeddings.cpp:
+- `q4_k`: 4-bit quantization with K-means clustering (good balance of size and quality)
+- `q6_k`: 6-bit quantization with K-means clustering (higher quality, larger size)
+- `q8_0`: 8-bit quantization (minimal quality loss, moderate size reduction)
+- Other GGML quantization types as supported by the library
+
+### Usage
+
+```
+quantize <input_model.gguf> <output_model.gguf> <qtype>
+```
+
+The quantization tool will:
+1. Load the input GGUF model
+2. Quantize eligible tensors (typically weight matrices)
+3. Preserve metadata and non-quantizable tensors
+4. Output size comparison and compression statistics
+
+## Running Tests
+
+Before running, install embeddings.cpp:
 ```bash
+# use CMAKE_ARGS to add more cmake settings
+$env:CMAKE_ARGS="-DGGML_VULKAN=ON"
+
 # Install the package
 pip install .
 
@@ -60,7 +94,9 @@ cd build && make stub
 # on Windows
 pip install pybind11-stubgen
 # then
-C:\Users\chuxd\AppData\Roaming\Python\Python312\Scripts\pybind11-stubgen embeddings_cpp -o .
+pybind11-stubgen embeddings_cpp -o .
+
+python tests/test_tokenizer.py
 ```
 
 ## Building from Source
@@ -73,17 +109,26 @@ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
       -DGGML_METAL=ON \
       -DGGML_METAL_EMBED_LIBRARY=ON \
       -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON ..
+```
+
+If you encountered openmp's bug, try
+
+> brew install libomp
+>
+> export OpenMP_ROOT=$(brew --prefix)/opt/libomp
 
 ### Windows
 
 build with vulkan support:
 
 ```powershell
-cmake -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON ..
+cmake -DGGML_VULKAN=ON -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON ..
+# If you encounter any issues, ensure that your graphics driver and Vulkan SDK versions are compatible.
+# You can also add -DGGML_VULKAN_DEBUG=ON -DGGML_VULKAN_VALIDATE=ON for debuging
 ```
 
-## debugging
+## Debugging
 
-for better debugging ggml, we could use 0001-feat-add-debug-support-for-only-cpu-backend.patch
+GGML debug support is now enabled by default in the vendored version. This provides better debugging capabilities for CPU backend operations without requiring additional patches.
 
-check: https://github.com/ggml-org/ggml/discussions/655 for details
+For more information about GGML debugging features, see: https://github.com/ggml-org/ggml/discussions/655

@@ -90,7 +90,7 @@ void BertModel::LoadTensors() {
   }
 }
 
-struct ggml_cgraph *BertModel::BuildGraph(const std::vector<Encoding> &batch,
+struct ggml_cgraph *BertModel::BuildGraph(const std::vector<TokenizedInput> &batch,
                                           bool normalize,
                                           PoolingMethod pooling_method) {
   // Safely cast from base class pointer back to derived class config type
