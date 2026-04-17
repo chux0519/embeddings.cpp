@@ -1,0 +1,156 @@
+name: Upload GGUF to Hugging Face
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_id:
+        description: "Registered model id or alias"
+        required: true
+        default: "Snowflake/snowflake-arctic-embed-m-v2.0"
+        type: string
+      hf_repo_id:
+        description: "Override target Hugging Face model repo. Leave empty to use registry."
+        required: false
+        default: ""
+        type: string
+      private:
+        description: "Create the Hugging Face repo as private when it does not exist"
+        required: true
+        default: false
+        type: boolean
+      run_smoke_test:
+        description: "Run a small embeddings.cpp smoke test before upload"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upload-gguf-to-hf-${{ github.ref }}-${{ inputs.model_id }}
+  cancel-in-progress: true
+
+env:
+  HF_HUB_ENABLE_HF_TRANSFER: 1
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache
+
+      - name: Install Python dependencies
+        run: |
+          uv venv
+          uv pip install --torch-backend cpu -r scripts/requirements.txt
+          uv pip install "huggingface_hub[hf_transfer]"
+
+      - name: Resolve model metadata
+        id: meta
+        env:
+          MODEL_ID: ${{ inputs.model_id }}
+          HF_REPO_ID_OVERRIDE: ${{ inputs.hf_repo_id }}
+        run: |
+          uv run python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
+          from embeddings_cpp.registry import get_model_spec
+
+          spec = get_model_spec(os.environ["MODEL_ID"])
+          repo_id = os.environ["HF_REPO_ID_OVERRIDE"] or spec.hf_repo_id
+          print(f"model_id={spec.model_id}")
+          print(f"slug={spec.slug}")
+          print(f"hf_repo_id={repo_id}")
+          print(f"artifact_file={spec.artifact_file}")
+          print(f"pooling={spec.pooling}")
+          print(f"embedding_dim={spec.embedding_dim}")
+          PY
+
+      - name: Build embeddings.cpp
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON \
+            -DGGML_CPU_REPACK=ON \
+            -DGGML_BLAS=OFF \
+            -DGGML_OPENMP=OFF \
+            -DGGML_NATIVE=OFF \
+            -DGGML_CUDA=OFF \
+            -DGGML_VULKAN=OFF \
+            -DGGML_METAL=OFF
+          cmake --build build
+          cp build/_C*.so embeddings_cpp/
+
+      - name: Build optimized GGUF
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          uv run scripts/build_gguf_artifact.py --model-id "${{ steps.meta.outputs.model_id }}"
+          ls -lh "models/${{ steps.meta.outputs.artifact_file }}"
+
+      - name: Smoke test final GGUF
+        if: ${{ inputs.run_smoke_test }}
+        run: |
+          uv run python - <<'PY'
+          import os
+          from embeddings_cpp import load
+
+          model = load(
+              "${{ steps.meta.outputs.model_id }}",
+              gguf_path="models/${{ steps.meta.outputs.artifact_file }}",
+          )
+          vectors = model.batch_encode(["hello world", "你好，世界"])
+          assert len(vectors) == 2
+          assert len(vectors[0]) == ${{ steps.meta.outputs.embedding_dim }}
+          assert len(vectors[1]) == ${{ steps.meta.outputs.embedding_dim }}
+          print("smoke test passed")
+          PY
+
+      - name: Prepare Hugging Face upload folder
+        run: |
+          mkdir -p hf-upload
+          cp "models/${{ steps.meta.outputs.artifact_file }}" "hf-upload/${{ steps.meta.outputs.artifact_file }}"
+          uv run scripts/render_hf_readme.py \
+            --model-id "${{ steps.meta.outputs.model_id }}" \
+            --gguf "models/${{ steps.meta.outputs.artifact_file }}" \
+            --template docs/huggingface/snowflake-arctic-embed-m-v2.0-gguf/README.md \
+            --output hf-upload/README.md | tee gguf.sha256
+
+      - name: Upload to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ steps.meta.outputs.hf_repo_id }}
+          HF_PRIVATE: ${{ inputs.private }}
+        run: |
+          uv run python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+
+          repo_id = os.environ["HF_REPO_ID"]
+          private = os.environ["HF_PRIVATE"].lower() == "true"
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          api.create_repo(repo_id=repo_id, repo_type="model", private=private, exist_ok=True)
+          api.upload_folder(
+              repo_id=repo_id,
+              repo_type="model",
+              folder_path="hf-upload",
+              commit_message="Upload optimized GGUF for embeddings.cpp",
+          )
+          print(f"uploaded: https://huggingface.co/{repo_id}")
+          PY

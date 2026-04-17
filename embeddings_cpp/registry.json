@@ -1,0 +1,61 @@
+{
+  "Snowflake/snowflake-arctic-embed-m-v2.0": {
+    "model_id": "Snowflake/snowflake-arctic-embed-m-v2.0",
+    "slug": "snowflake-arctic-embed-m-v2.0",
+    "hf_repo_id": "chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp",
+    "artifact_file": "snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf",
+    "source_dtype": "f16",
+    "pooling": "cls",
+    "embedding_dim": 768,
+    "runtime_env": {
+      "EMBEDDINGS_CPP_CPU_REPACK": "1",
+      "EMBEDDINGS_CPP_FLASH_ATTN": "1"
+    },
+    "cmake_flags": [
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DEMBEDDINGS_CPP_ENABLE_PYBIND=ON",
+      "-DGGML_CPU_REPACK=ON",
+      "-DGGML_BLAS=OFF",
+      "-DGGML_OPENMP=OFF",
+      "-DGGML_NATIVE=OFF",
+      "-DGGML_CUDA=OFF",
+      "-DGGML_VULKAN=OFF",
+      "-DGGML_METAL=OFF"
+    ],
+    "quantization_steps": [
+      {
+        "name": "q4_k_mlp_attnf16",
+        "quant": "q4_k",
+        "output_file": "snowflake-arctic-embed-m-v2.0.q4_k_mlp_attnf16.gguf",
+        "skip_patterns": [
+          "attention.qkv_proj.weight",
+          "attention.o_proj.weight"
+        ]
+      },
+      {
+        "name": "q4_k_mlp_q8_attn",
+        "quant": "q8_0",
+        "output_file": "snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf",
+        "skip_patterns": [
+          "mlp.up_gate_proj.weight",
+          "mlp.down_proj.weight"
+        ]
+      }
+    ],
+    "correctness": {
+      "python_min_cos": 0.96,
+      "batch_min_cos": 0.999
+    },
+    "benchmark": {
+      "batch_sizes": [1, 2, 4, 8, 16],
+      "default_threads": null,
+      "max_batch_tokens": 8192
+    }
+  },
+  "snowflake-arctic-embed-m-v2.0": {
+    "alias_for": "Snowflake/snowflake-arctic-embed-m-v2.0"
+  },
+  "snowflake": {
+    "alias_for": "Snowflake/snowflake-arctic-embed-m-v2.0"
+  }
+}

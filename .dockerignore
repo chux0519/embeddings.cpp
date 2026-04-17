@@ -1,0 +1,11 @@
+.git
+.cache
+.venv
+build
+models/*.gguf
+scripts/output
+__pycache__
+*.pyc
+*.pyo
+*.so
+*.egg-info

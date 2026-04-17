@@ -50,6 +50,12 @@ class CMakeBuild(build_ext):
             f"-DCMAKE_BUILD_TYPE={cfg}",  # not used on MSVC, but no harm
             f"-DEMBEDDINGS_CPP_ENABLE_PYBIND=ON",
             f"-DBUILD_SHARED_LIBS=OFF",
+            "-DGGML_CPU_REPACK=ON",
+            "-DGGML_BLAS=OFF",
+            "-DGGML_OPENMP=OFF",
+            "-DGGML_NATIVE=OFF",
+            "-DGGML_CUDA=OFF",
+            "-DGGML_VULKAN=OFF",
         ]
         build_args = []
         # Adding CMake arguments set as environment variable
@@ -126,8 +132,17 @@ if version_match is None:
 version = version_match.group(1)
 
 setup(
+    name="embeddings-cpp",
     version=version,
+    description="GGML-based text embedding inference with Hugging Face tokenizers.",
+    python_requires=">=3.10",
     packages=find_packages(),
+    package_data={"embeddings_cpp": ["registry.json"]},
+    extras_require={
+        "hub": ["huggingface_hub>=0.23"],
+        "server": ["fastapi>=0.110", "uvicorn[standard]>=0.27", "huggingface_hub>=0.23"],
+        "dev": ["huggingface_hub>=0.23", "fastapi>=0.110", "uvicorn[standard]>=0.27", "psutil", "requests", "numpy"],
+    },
     ext_modules=[CMakeExtension("embeddings_cpp._C")],
     cmdclass={"build_ext": CMakeBuild},
 )

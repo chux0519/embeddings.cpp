@@ -131,6 +131,57 @@ uv run scripts/alignment.py \
   --benchmark
 ```
 
+For registry-driven Snowflake checks against the optimized mixed GGUF:
+
+```bash
+uv run scripts/correctness.py --model-id Snowflake/snowflake-arctic-embed-m-v2.0 --benchmark
+uv run scripts/benchmark.py \
+  --model-id Snowflake/snowflake-arctic-embed-m-v2.0 \
+  --gguf-path models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf
+```
+
+## Loading Published GGUF Models
+
+Known optimized GGUF artifacts are listed in `embeddings_cpp/registry.json`.
+The default Snowflake artifact is published under the `chux0519` Hugging Face
+namespace.
+
+```python
+from embeddings_cpp import load
+
+model = load("Snowflake/snowflake-arctic-embed-m-v2.0")
+vectors = model.batch_encode(["hello world", "你好，世界"])
+```
+
+By default, CPU inference uses the detected CPU concurrency. Pin
+`EMBEDDINGS_CPP_THREADS=N` only after measuring a specific host or container CPU
+quota.
+
+Install the optional Hugging Face dependency when downloading from the Hub:
+
+```bash
+pip install "embeddings-cpp[hub]"
+```
+
+## HTTP Server
+
+The server can load a registered model from Hugging Face or a local GGUF path:
+
+```bash
+python -m embeddings_cpp.server \
+  --model-id Snowflake/snowflake-arctic-embed-m-v2.0 \
+  --port 8080
+```
+
+Endpoints:
+
+- `GET /health`
+- `POST /embed` with `{"inputs": ["hello", "world"]}`
+- `POST /v1/embeddings` with an OpenAI-compatible embeddings request
+
+Container images can be published to GHCR with
+`.github/workflows/publish-server-image.yml`.
+
 ## Building from Source
 
 ### macOS (ARM)

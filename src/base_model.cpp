@@ -32,7 +32,7 @@ int get_num_threads() {
     }
   }
 
-  return std::max(1, std::min(11, max_threads));
+  return max_threads;
 }
 
 bool should_log_compute_buffer() {

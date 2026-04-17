@@ -49,7 +49,18 @@ MODEL_SPECS: dict[str, ModelSpec] = {
     ),
 }
 
-QUANTIZATIONS = ("fp16", "q8_0", "q6_k", "q5_k", "q5_0", "q4_k", "q4_0", "q3_k", "q2_k")
+QUANTIZATIONS = (
+    "fp16",
+    "q8_0",
+    "q6_k",
+    "q5_k",
+    "q5_0",
+    "q4_k",
+    "q4_0",
+    "q3_k",
+    "q2_k",
+    "q4_k_mlp_q8_attn",
+)
 
 CORRECTNESS_CASES: dict[str, list[str]] = {
     "single_en": ["The quick brown fox jumps over the lazy dog."],
