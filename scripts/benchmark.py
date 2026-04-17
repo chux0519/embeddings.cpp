@@ -11,10 +11,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 from embeddings_cpp.registry import get_model_spec
 
 
-ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT / "scripts" / "output"
 TEXTS = [
     "你好，今天天气怎么样？",
