@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 import subprocess
 import sys
@@ -16,6 +17,9 @@ sys.path.insert(0, str(ROOT))
 
 from embeddings_cpp.registry import get_model_spec
 
+
+os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
+os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
 
 OUTPUT_DIR = ROOT / "scripts" / "output"
 TEXTS = [
