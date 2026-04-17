@@ -16,30 +16,32 @@ The following models have been tested and verified:
 - BAAI/bge-m3
 - BAAI/bge-base-zh-v1.5
 - shibing624/text2vec-base-multilingual
+- Snowflake/snowflake-arctic-embed-m-v2.0
+- sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 
-The C++ implementation shows high accuracy compared to the Python implementation, with differences in the order of 10^-9. For detailed comparison results, please refer to `alignment.ipynb`.
+The C++ implementation is checked against Python `transformers` CPU output. Models also supported by Hugging Face `text-embeddings-inference` can be checked against TEI as a third implementation. For repeatable correctness and performance runs, see `scripts/ALIGNMENT_README.md`.
 
 ## Model Preparation
 
 First, install the required dependencies:
 ```bash
-pip install -r scripts/requirements.txt
+uv pip install --torch-backend cpu -r scripts/requirements.txt
 ```
 
 Then convert the models to GGUF format:
 ```bash
 # Convert BGE-M3 model
-python scripts/convert.py BAAI/bge-m3 ./models/bge-m3.fp16.gguf f16
+uv run scripts/convert.py BAAI/bge-m3 ./models/bge-m3.fp16.gguf f16
 
 # Convert BGE-Base Chinese v1.5 model
-python scripts/convert.py BAAI/bge-base-zh-v1.5 ./models/bge-base-zh-v1.5.fp16.gguf f16
+uv run scripts/convert.py BAAI/bge-base-zh-v1.5 ./models/bge-base-zh-v1.5.fp16.gguf f16
 
 uv run scripts/convert.py Snowflake/snowflake-arctic-embed-m-v2.0 ./models/snowflake-arctic-embed-m-v2.0.fp16.gguf f16
 
 # Convert Text2Vec multilingual model
-python scripts/convert.py shibing624/text2vec-base-multilingual ./models/text2vec-base-multilingual.fp16.gguf f16
+uv run scripts/convert.py shibing624/text2vec-base-multilingual ./models/text2vec-base-multilingual.fp16.gguf f16
 
-python scripts/convert.py sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 ./models/paraphrase-multilingual-MiniLM-L12-v2.fp16.gguf f16
+uv run scripts/convert.py sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 ./models/paraphrase-multilingual-MiniLM-L12-v2.fp16.gguf f16
 ```
 
 ## Model Quantization
@@ -97,6 +99,36 @@ pip install pybind11-stubgen
 pybind11-stubgen embeddings_cpp -o .
 
 python tests/test_tokenizer.py
+```
+
+## Alignment and Benchmarking
+
+Run correctness checks for every model mentioned in this README:
+
+```bash
+uv run scripts/alignment.py --convert-missing
+```
+
+Include CPU performance comparisons:
+
+```bash
+uv run scripts/alignment.py --convert-missing --benchmark
+```
+
+Pin the C++ CPU thread count while tuning:
+
+```bash
+uv run scripts/alignment.py --benchmark --cpp-threads 8
+```
+
+For models also supported by `text-embeddings-inference`, start TEI as an additional comparator:
+
+```bash
+uv run scripts/alignment.py \
+  --models Snowflake/snowflake-arctic-embed-m-v2.0 \
+  --convert-missing \
+  --tei-start \
+  --benchmark
 ```
 
 ## Building from Source

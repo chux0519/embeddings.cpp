@@ -66,7 +66,7 @@ class BaseModel {
   std::vector<float> Forward(
       const TokenizedInput &enc, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN);
-  std::vector<std::vector<float>> BatchForward(
+  virtual std::vector<std::vector<float>> BatchForward(
       const std::vector<TokenizedInput> &batch, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN);
 

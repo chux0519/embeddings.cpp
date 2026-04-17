@@ -1,5 +1,7 @@
 #include "factory.h"
 
+#include <chrono>
+#include <cstdlib>
 #include <stdexcept>
 
 #include "bert.h"
@@ -8,6 +10,20 @@
 #include "utils.h"  // for get_str, etc.
 
 namespace embeddings {
+namespace {
+
+bool should_profile() {
+  const char *env = std::getenv("EMBEDDINGS_CPP_PROFILE");
+  return env && std::atoi(env) != 0;
+}
+
+using Clock = std::chrono::steady_clock;
+
+double elapsed_ms(Clock::time_point start, Clock::time_point end) {
+  return std::chrono::duration<double, std::milli>(end - start).count();
+}
+
+}  // namespace
 
 std::unique_ptr<BaseModel> create_model_from_gguf(
     const std::string& gguf_path) {
@@ -84,8 +100,17 @@ class EmbeddingImpl : public Embedding {
   std::vector<std::vector<float>> batch_encode(
       const std::vector<std::string>& batch, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN) override {
+    const auto t0 = Clock::now();
     auto encodings = tok->EncodeBatch(batch, true);
-    return model->BatchForward(encodings, normalize, pooling_method);
+    const auto t1 = Clock::now();
+    auto result = model->BatchForward(encodings, normalize, pooling_method);
+    const auto t2 = Clock::now();
+    if (should_profile()) {
+      fprintf(stderr,
+              "profile,tokenize_ms=%.3f,model_forward_ms=%.3f,batch=%zu\n",
+              elapsed_ms(t0, t1), elapsed_ms(t1, t2), batch.size());
+    }
+    return result;
   }
 
  private:

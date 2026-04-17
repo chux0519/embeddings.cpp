@@ -1,1 +1,8 @@
+# Optional override for scripts/alignment.py.
+# The script defaults to parsing README.md, so this file is only needed when
+# you want a stable subset.
+BAAI/bge-m3
+BAAI/bge-base-zh-v1.5
+shibing624/text2vec-base-multilingual
 Snowflake/snowflake-arctic-embed-m-v2.0
+sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2

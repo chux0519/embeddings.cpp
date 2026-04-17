@@ -8,6 +8,7 @@
 #ifdef GGML_USE_VULKAN
 #include "ggml-vulkan.h"
 #endif
+#include <cstdlib>
 #include <fstream>
 
 #include "tokenizer.h"
@@ -15,34 +16,14 @@
 
 namespace embeddings {
 
-// Helper: scatter [D, N] -> [D, L, B] using indices
-static struct ggml_tensor *ggml_scatter_rows_3d(
-    struct ggml_context *ctx,
-    struct ggml_tensor *src,              // [D, N]
-    const std::vector<int32_t> &indices,  // length N
-    int B, int L) {                       // target shape
-  // Ensure src is contiguous first
-  src = ggml_cont(ctx, src);
-
-  const int D = src->ne[0];
-  const int N = src->ne[1];
-  struct ggml_tensor *dst = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, D, L, B);
-
-  // Initialize dst to zeros
-  dst = ggml_set_zero(dst);
-
-  // Note: This function will be called during graph execution,
-  // so we can't directly access tensor data here.
-  // We need to implement this as a custom GGML operation or use existing
-  // operations. For now, let's create a zero tensor and note that this needs to
-  // be implemented properly.
-
-  return dst;
+static bool use_flash_attn_ext() {
+  const char *env = std::getenv("EMBEDDINGS_CPP_FLASH_ATTN");
+  return env && std::atoi(env) != 0;
 }
 
 // === helper for rotary embedding cache ===
 static std::pair<std::vector<float>, std::vector<float>> build_rope_cache(
-    int max_pos, int dim, float rope_theta) {
+    const std::vector<int32_t> &positions, int dim, float rope_theta) {
   const int half_dim = dim / 2;
 
   std::vector<float> inv_freq(half_dim);
@@ -50,19 +31,20 @@ static std::pair<std::vector<float>, std::vector<float>> build_rope_cache(
     inv_freq[i] = 1.0f / powf(rope_theta, (float)i / half_dim);
   }
 
-  std::vector<float> cos_data(max_pos * dim);
-  std::vector<float> sin_data(max_pos * dim);
+  std::vector<float> cos_data(positions.size() * dim);
+  std::vector<float> sin_data(positions.size() * dim);
 
-  for (int pos = 0; pos < max_pos; ++pos) {
+  for (size_t token = 0; token < positions.size(); ++token) {
+    const int pos = positions[token];
     for (int i = 0; i < half_dim; ++i) {
       float val = pos * inv_freq[i];
       float cos_val = cosf(val);
       float sin_val = sinf(val);
       // duplicate like PyTorch cat((freqs, freqs))
-      cos_data[pos * dim + i] = cos_val;
-      cos_data[pos * dim + half_dim + i] = cos_val;
-      sin_data[pos * dim + i] = sin_val;
-      sin_data[pos * dim + half_dim + i] = sin_val;
+      cos_data[token * dim + i] = cos_val;
+      cos_data[token * dim + half_dim + i] = cos_val;
+      sin_data[token * dim + i] = sin_val;
+      sin_data[token * dim + half_dim + i] = sin_val;
     }
   }
 
@@ -108,8 +90,6 @@ ggml_tensor *ggml_apply_rotary_pos_emb(
                       sin_tensor->ne[1],  // L
                       1                   // B (will be broadcasted)
       );                                  // => [D, H=1, L, B=1]
-  struct ggml_tensor *cos_broadcast = ggml_repeat(ctx, cos_shaped, x);
-  struct ggml_tensor *sin_broadcast = ggml_repeat(ctx, sin_shaped, rotated);
   struct ggml_tensor *out = ggml_add(ctx, ggml_mul(ctx, x, cos_shaped),
                                      ggml_mul(ctx, rotated, sin_shaped));
 
@@ -201,74 +181,96 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
   const int d_head = D / n_head;
   const float theta = gte_hparams->rope_theta;
 
-  std::vector<int32_t> indices;
-  std::vector<int32_t> unpadded_ids;
-  std::vector<float> pad_mask_data(B * L, 0.0f);
+  std::vector<int32_t> token_ids;
+  std::vector<int32_t> token_types;
+  std::vector<int32_t> rope_positions;
+  std::vector<int> valid_token_counts(B, 0);
+  bool has_empty_row = false;
+  token_ids.reserve(B * L);
+  token_types.reserve(B * L);
+  rope_positions.reserve(B * L);
   for (int b = 0; b < B; ++b) {
     for (int i = 0; i < L; ++i) {
       if (batch[b].attention_mask[i]) {
-        indices.push_back(b * L + i);
-        unpadded_ids.push_back(batch[b].ids[i]);
-        pad_mask_data[b * L + i] = 1.0f;
+        token_ids.push_back(batch[b].ids[i]);
+        token_types.push_back(0);
+        rope_positions.push_back(i);
+        valid_token_counts[b]++;
       }
     }
+    has_empty_row |= valid_token_counts[b] == 0;
   }
-  const int N = unpadded_ids.size();
+  const int N = token_ids.size();
 
   size_t ctx_size =
-      GGML_DEFAULT_GRAPH_SIZE * ggml_tensor_overhead() + ggml_graph_overhead();
+      B * GGML_DEFAULT_GRAPH_SIZE * ggml_tensor_overhead() +
+      ggml_graph_overhead();
   struct ggml_init_params params = {ctx_size, NULL, true};
   ctx.compute_ctx = ggml_init(params);
   ctx.compute_graph_ctx = ggml_init(params);
   struct ggml_context *ctx0 = ctx.compute_graph_ctx;
-  struct ggml_cgraph *gf = ggml_new_graph(ctx0);
+  struct ggml_cgraph *gf =
+      ggml_new_graph_custom(ctx0, B * GGML_DEFAULT_GRAPH_SIZE, false);
 
-  // Tensors
+  if (N == 0) {
+    auto *zero_pooled =
+        ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, D, B);
+    ctx.compute_buffer =
+        ggml_backend_alloc_ctx_tensors(ctx.compute_ctx, ctx.backend);
+    std::vector<float> zero_data(D * B, 0.0f);
+    ggml_backend_tensor_set(zero_pooled, zero_data.data(), 0,
+                            zero_data.size() * sizeof(float));
+
+    auto *pooled = zero_pooled;
+    if (normalize) {
+      pooled = ggml_rms_norm(ctx0, pooled, gte_hparams->layer_norm_eps);
+      pooled = ggml_scale_inplace(ctx0, pooled, 1.0f / sqrtf((float)D));
+    }
+    ggml_build_forward_expand(gf, pooled);
+    return gf;
+  }
+
   auto *input_ids = ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, N);
-  auto *pad_mask =
-      ggml_new_tensor_4d(ctx.compute_ctx, GGML_TYPE_F32, 1, L, 1, B);
-  auto *minus_one = ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_F32, 1);
-
-  // RoPE cache tensors
+  auto *token_type_ids =
+      ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, N);
   auto *rope_cos =
       ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, d_head, N);
   auto *rope_sin =
       ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, d_head, N);
+  auto *zero_pooled =
+      has_empty_row ? ggml_new_tensor_2d(ctx.compute_ctx, GGML_TYPE_F32, D, 1)
+                    : nullptr;
 
   // Allocate backend memory for all tensors
   ctx.compute_buffer =
       ggml_backend_alloc_ctx_tensors(ctx.compute_ctx, ctx.backend);
 
-  // Now set tensor data
-  ggml_backend_tensor_set(input_ids, unpadded_ids.data(), 0,
-                          N * sizeof(int32_t));
-  ggml_backend_tensor_set(pad_mask, pad_mask_data.data(), 0,
-                          sizeof(float) * B * L);
-  float m1 = -1.0f;
-  ggml_backend_tensor_set(minus_one, &m1, 0, sizeof(float));
-
-  // RoPE cache
-  auto [rope_cos_data, rope_sin_data] = build_rope_cache(N, d_head, theta);
+  ggml_backend_tensor_set(input_ids, token_ids.data(), 0,
+                          token_ids.size() * sizeof(int32_t));
+  ggml_backend_tensor_set(token_type_ids, token_types.data(), 0,
+                          token_types.size() * sizeof(int32_t));
+  auto [rope_cos_data, rope_sin_data] =
+      build_rope_cache(rope_positions, d_head, theta);
   ggml_backend_tensor_set(rope_cos, rope_cos_data.data(), 0,
                           rope_cos_data.size() * sizeof(float));
   ggml_backend_tensor_set(rope_sin, rope_sin_data.data(), 0,
                           rope_sin_data.size() * sizeof(float));
+  if (zero_pooled) {
+    std::vector<float> zero_data(D, 0.0f);
+    ggml_backend_tensor_set(zero_pooled, zero_data.data(), 0,
+                            zero_data.size() * sizeof(float));
+  }
 
-  // Embedding
-  auto *emb =
-      ggml_get_rows(ctx0, embeddings.word_embeddings, input_ids);  // [D, N]
+  auto *emb = ggml_get_rows(ctx0, embeddings.word_embeddings, input_ids);
+  emb = ggml_add(
+      ctx0, emb,
+      ggml_get_rows(ctx0, embeddings.token_type_embeddings, token_type_ids));
   emb = ggml_cont(ctx0, ggml_reshape_2d(ctx0, emb, D, N));
   emb = ggml_norm_inplace(ctx0, emb, gte_hparams->layer_norm_eps);
   emb = ggml_add(ctx0, ggml_mul(ctx0, emb, embeddings.LayerNorm_w),
                  embeddings.LayerNorm_b);
 
-  // Attention mask
-  auto *attn_mask = ggml_mul_mat(ctx0, pad_mask, pad_mask);  // [L, L, 1, B]
-  attn_mask = ggml_add(ctx0, attn_mask, minus_one);
-  attn_mask = ggml_scale_inplace(ctx0, attn_mask, 100000.0f);
-
-  // Encoder (single QKV block version)
-  auto *inpL = emb;  // [D, N]
+  auto *inpL = emb;
   for (int il = 0; il < n_layer; ++il) {
     const auto &layer = layers[il];
     auto *qkv = ggml_add(ctx0, ggml_mul_mat(ctx0, layer.qkv_proj_w, inpL),
@@ -291,17 +293,55 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
     q = ggml_apply_rotary_pos_emb(ctx0, q, rope_cos, rope_sin);
     k = ggml_apply_rotary_pos_emb(ctx0, k, rope_cos, rope_sin);
 
-    q = ggml_cont(ctx0, ggml_permute(ctx0, q, 0, 2, 1, 3));  // D, L, H, 1
+    q = ggml_cont(ctx0, ggml_permute(ctx0, q, 0, 2, 1, 3));
     k = ggml_cont(ctx0, ggml_permute(ctx0, k, 0, 2, 1, 3));
+    auto *v_flash = ggml_cont(ctx0, ggml_permute(ctx0, v, 0, 2, 1, 3));
     v = ggml_cont(ctx0, ggml_permute(ctx0, v, 1, 2, 0, 3));
 
-    auto *score = ggml_mul_mat(ctx0, k, q);
-    score = ggml_scale_inplace(ctx0, score, 1.0f / sqrtf((float)d_head));
-    score = ggml_soft_max(ctx0, score);
+    std::vector<struct ggml_tensor *> batch_attn;
+    batch_attn.reserve(B);
+    int token_offset = 0;
+    for (int b = 0; b < B; ++b) {
+      const int valid_tokens = valid_token_counts[b];
+      if (valid_tokens == 0) {
+        continue;
+      }
 
-    auto *attn = ggml_mul_mat(ctx0, v, score);
-    attn = ggml_cont(ctx0, ggml_permute(ctx0, attn, 0, 2, 1, 3));
-    attn = ggml_reshape_2d(ctx0, attn, D, N);
+      auto *qb = ggml_view_4d(ctx0, q, d_head, valid_tokens, n_head, 1,
+                              q->nb[1], q->nb[2], q->nb[3],
+                              token_offset * q->nb[1]);
+      auto *kb = ggml_view_4d(ctx0, k, d_head, valid_tokens, n_head, 1,
+                              k->nb[1], k->nb[2], k->nb[3],
+                              token_offset * k->nb[1]);
+
+      struct ggml_tensor *attn = nullptr;
+      if (use_flash_attn_ext()) {
+        auto *vb = ggml_view_4d(ctx0, v_flash, d_head, valid_tokens, n_head, 1,
+                                v_flash->nb[1], v_flash->nb[2],
+                                v_flash->nb[3], token_offset * v_flash->nb[1]);
+        attn = ggml_flash_attn_ext(ctx0, qb, kb, vb, nullptr,
+                                   1.0f / sqrtf((float)d_head), 0.0f, 0.0f);
+        ggml_flash_attn_ext_set_prec(attn, GGML_PREC_F32);
+        attn = ggml_cont(ctx0, attn);
+      } else {
+        auto *vb = ggml_view_4d(ctx0, v, valid_tokens, d_head, n_head, 1,
+                                v->nb[1], v->nb[2], v->nb[3],
+                                token_offset * v->nb[0]);
+        auto *score = ggml_mul_mat(ctx0, kb, qb);
+        score = ggml_scale_inplace(ctx0, score, 1.0f / sqrtf((float)d_head));
+        score = ggml_soft_max(ctx0, score);
+
+        attn = ggml_mul_mat(ctx0, vb, score);
+        attn = ggml_cont(ctx0, ggml_permute(ctx0, attn, 0, 2, 1, 3));
+      }
+      batch_attn.push_back(ggml_reshape_2d(ctx0, attn, D, valid_tokens));
+      token_offset += valid_tokens;
+    }
+
+    auto *attn = batch_attn[0];
+    for (size_t b = 1; b < batch_attn.size(); ++b) {
+      attn = ggml_concat(ctx0, attn, batch_attn[b], 1);
+    }
 
     auto *proj = ggml_add(ctx0, ggml_mul_mat(ctx0, layer.o_proj_w, attn),
                           layer.o_proj_b);
@@ -309,23 +349,17 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
     res = ggml_norm_inplace(ctx0, res, gte_hparams->layer_norm_eps);
     res = ggml_add(ctx0, ggml_mul(ctx0, res, layer.attn_ln_w), layer.attn_ln_b);
 
-    // 1. gated_layers
-    // {768, 6144, 1, 1} * {768, 5 , 1, 1} = {6144, 5, 1, 1}
-    const int hidden_features = gte_hparams->intermediate_size;  // 3072
+    const int hidden_features = gte_hparams->intermediate_size;
     struct ggml_tensor *up_gate = ggml_mul_mat(ctx0, layer.up_gate_proj_w, res);
-    // 2. Split gated and non-gated parts
     struct ggml_tensor *up_state =
         ggml_view_2d(ctx0, up_gate, hidden_features, res->ne[1], up_gate->nb[1],
-                     0);  // {3072, 5, 1, 1}
+                     0);
     struct ggml_tensor *gate =
         ggml_view_2d(ctx0, up_gate, hidden_features, res->ne[1], up_gate->nb[1],
                      hidden_features * up_gate->nb[0]);
-    // 3. Activation function (GELU) // {3072, 5, 1, 1}
     gate = ggml_cont(ctx0, gate);
     gate = ggml_gelu(ctx0, gate);
-    // 4. Element-wise multiplication // {3072, 5, 1, 1}
     struct ggml_tensor *gated_states = ggml_mul(ctx0, gate, up_state);
-    // 5. wo (linear transformation)
     struct ggml_tensor *ffn =
         ggml_add(ctx0, ggml_mul_mat(ctx0, layer.down_proj_w, gated_states),
                  layer.down_proj_b);
@@ -335,50 +369,27 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
     inpL = ggml_add(ctx0, ggml_mul(ctx0, inpL, layer.mlp_ln_w), layer.mlp_ln_b);
   }
 
-  // Since we have unpadded tokens [D, N], we need to do pooling per batch
-  // For simplicity, let's do mean pooling across all valid tokens per batch
-
-  // Create per-batch pooled results
   std::vector<struct ggml_tensor *> batch_pooled;
+  batch_pooled.reserve(B);
   int token_offset = 0;
-
   for (int b = 0; b < B; ++b) {
-    // Count valid tokens for this batch
-    int valid_tokens = 0;
-    for (int i = 0; i < L; ++i) {
-      if (batch[b].attention_mask[i]) {
-        valid_tokens++;
-      }
-    }
-
+    const int valid_tokens = valid_token_counts[b];
     if (valid_tokens > 0) {
-      // Extract tokens for this batch [D, valid_tokens]
       auto *batch_tokens = ggml_view_2d(
           ctx0, inpL, D, valid_tokens, inpL->nb[1], token_offset * inpL->nb[1]);
-
-      // Pool based on method
-      struct ggml_tensor *batch_pooled_result;
       if (pooling_method == PoolingMethod::CLS) {
-        // Use first token (CLS)
-        batch_pooled_result =
-            ggml_view_2d(ctx0, batch_tokens, D, 1, batch_tokens->nb[1], 0);
+        batch_pooled.push_back(
+            ggml_view_2d(ctx0, batch_tokens, D, 1, batch_tokens->nb[1], 0));
       } else {
-        // Mean pooling
-        batch_pooled_result = ggml_mean(ctx0, batch_tokens);
-        batch_pooled_result = ggml_reshape_2d(ctx0, batch_pooled_result, D, 1);
+        auto *mean = ggml_mean(ctx0, batch_tokens);
+        batch_pooled.push_back(ggml_reshape_2d(ctx0, mean, D, 1));
       }
-
-      batch_pooled.push_back(batch_pooled_result);
       token_offset += valid_tokens;
     } else {
-      // If no valid tokens, create zero tensor
-      auto *zero_tensor = ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, D, 1);
-      zero_tensor = ggml_set_zero(zero_tensor);
-      batch_pooled.push_back(zero_tensor);
+      batch_pooled.push_back(zero_pooled);
     }
   }
 
-  // Concatenate all batch results [D, B]
   auto *pooled = batch_pooled[0];
   for (int b = 1; b < B; ++b) {
     pooled = ggml_concat(ctx0, pooled, batch_pooled[b], 1);

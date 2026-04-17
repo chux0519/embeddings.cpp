@@ -10,13 +10,74 @@
 #endif
 
 #include <fstream>
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <thread>
 
 #include "utils.h"
 
+ggml_backend_buffer_type_t ggml_backend_cpu_repack_buffer_type(void);
+
 namespace embeddings {
+namespace {
+
+int get_num_threads() {
+  unsigned int detected = std::thread::hardware_concurrency();
+  int max_threads = detected > 0 ? static_cast<int>(detected) : 1;
+  if (const char *env = std::getenv("EMBEDDINGS_CPP_THREADS")) {
+    int value = std::atoi(env);
+    if (value > 0) {
+      return std::min(value, max_threads);
+    }
+  }
+
+  return std::max(1, std::min(11, max_threads));
+}
+
+bool should_log_compute_buffer() {
+  const char *env = std::getenv("EMBEDDINGS_CPP_LOG_COMPUTE_BUFFER");
+  return env && std::atoi(env) != 0;
+}
+
+bool should_profile() {
+  const char *env = std::getenv("EMBEDDINGS_CPP_PROFILE");
+  return env && std::atoi(env) != 0;
+}
+
+bool should_use_cpu_repack() {
+  const char *env = std::getenv("EMBEDDINGS_CPP_CPU_REPACK");
+  return env && std::atoi(env) != 0;
+}
+
+using Clock = std::chrono::steady_clock;
+
+double elapsed_ms(Clock::time_point start, Clock::time_point end) {
+  return std::chrono::duration<double, std::milli>(end - start).count();
+}
+
+}  // namespace
+
 BaseModel::BaseModel(const std::string &gguf_model) : model_path(gguf_model) {}
 
 BaseModel::~BaseModel() {
+  Clear();
+  if (ctx.compute_allocr) {
+    ggml_gallocr_free(ctx.compute_allocr);
+    ctx.compute_allocr = NULL;
+  }
+  if (ctx.weights_buffer) {
+    ggml_backend_buffer_free(ctx.weights_buffer);
+    ctx.weights_buffer = NULL;
+  }
+  if (ctx.ctx_data) {
+    ggml_free(ctx.ctx_data);
+    ctx.ctx_data = NULL;
+  }
+  if (ctx.backend) {
+    ggml_backend_free(ctx.backend);
+    ctx.backend = NULL;
+  }
   if (hparams) {
     delete hparams;
     hparams = nullptr;
@@ -37,8 +98,18 @@ std::vector<std::vector<float>> BaseModel::BatchForward(
   if (batch.empty()) {
     return {};
   }
+  const auto t0 = Clock::now();
   auto graph = CommonBatchForwardSetup(batch, normalize, pooling_method);
-  return ExtractResults(graph, batch.size(), hparams->hidden_size);
+  const auto t1 = Clock::now();
+  auto result = ExtractResults(graph, batch.size(), hparams->hidden_size);
+  const auto t2 = Clock::now();
+  if (should_profile()) {
+    fprintf(stderr,
+            "profile,total_batch_forward_ms=%.3f,setup_compute_ms=%.3f,extract_ms=%.3f,batch=%zu,hidden=%d\n",
+            elapsed_ms(t0, t2), elapsed_ms(t0, t1), elapsed_ms(t1, t2),
+            batch.size(), hparams->hidden_size);
+  }
+  return result;
 }
 
 void BaseModel::LoadModelImpl(const std::string &gguf_model) {
@@ -97,7 +168,13 @@ void BaseModel::LoadModelImpl(const std::string &gguf_model) {
     }
 
     // Allocate and read weights
-    ctx.weights_buffer = ggml_backend_alloc_buffer(ctx.backend, buffer_size);
+    ggml_backend_buffer_type_t weight_buft =
+        should_use_cpu_repack() && ggml_backend_is_cpu(ctx.backend)
+            ? ggml_backend_cpu_repack_buffer_type()
+            : ggml_backend_get_default_buffer_type(ctx.backend);
+    ctx.weights_buffer = ggml_backend_buft_alloc_buffer(weight_buft, buffer_size);
+    fprintf(stderr, "%s: weights buffer: %s\n", __func__,
+            ggml_backend_buft_name(weight_buft));
     auto alloc = ggml_tallocr_new(ctx.weights_buffer);
     std::ifstream fin(gguf_model, std::ios::binary);
     std::vector<uint8_t> read_buf;
@@ -183,23 +260,36 @@ struct ggml_cgraph *BaseModel::CommonBatchForwardSetup(
   Clear();
 
   // build compute graph
+  const auto t0 = Clock::now();
   auto graph = BuildGraph(batch, normalize, pooling_method);
+  const auto t1 = Clock::now();
 
   // alloc graph
   ctx.compute_allocr =
       ggml_gallocr_new(ggml_backend_get_default_buffer_type(ctx.backend));
   ggml_gallocr_alloc_graph(ctx.compute_allocr, graph);
+  const auto t2 = Clock::now();
 
-  auto buffer_size = ggml_gallocr_get_buffer_size(ctx.compute_allocr, 0);
-  printf("compute buffer size: %.2f MB\n", buffer_size / 1024.0 / 1024.0);
+  if (should_log_compute_buffer()) {
+    auto buffer_size = ggml_gallocr_get_buffer_size(ctx.compute_allocr, 0);
+    fprintf(stderr, "compute buffer size: %.2f MB\n",
+            buffer_size / 1024.0 / 1024.0);
+  }
 
   // run the computation
-  int n_threads = 1;
   if (ggml_backend_is_cpu(ctx.backend)) {
-    ggml_backend_cpu_set_n_threads(ctx.backend, n_threads);
+    ggml_backend_cpu_set_n_threads(ctx.backend, get_num_threads());
   }
 
   ggml_backend_graph_compute(ctx.backend, graph);
+  const auto t3 = Clock::now();
+
+  if (should_profile()) {
+    fprintf(stderr,
+            "profile,build_graph_ms=%.3f,alloc_graph_ms=%.3f,compute_ms=%.3f,nodes=%d,batch=%zu\n",
+            elapsed_ms(t0, t1), elapsed_ms(t1, t2), elapsed_ms(t2, t3),
+            ggml_graph_n_nodes(graph), batch.size());
+  }
 
   return graph;
 }
@@ -224,12 +314,10 @@ std::vector<std::vector<float>> BaseModel::ExtractResults(
   // to RAM
   ggml_backend_tensor_get(result, result_data, 0, ggml_nbytes(result));
 
+  ret.reserve(result->ne[1]);
   for (int j = 0; j < result->ne[1] /* rows */; j++) {
-    std::vector<float> emb;
-    for (int i = 0; i < result->ne[0] /* cols */; i++) {
-      emb.push_back(result_data[j * result->ne[0] + i]);
-    }
-    ret.push_back(emb);
+    const float *begin = result_data + j * result->ne[0];
+    ret.emplace_back(begin, begin + result->ne[0]);
   }
 
   free(result_data);

@@ -2,8 +2,26 @@
 __init__.pyi
 build
 .cache
+.venv
 *.gguf
 compile_commands.json
 .vs
 CMakeSettings.json
 .vscode
+
+# Python / native build artifacts
+__pycache__/
+*.py[cod]
+*.so
+*.dylib
+*.dll
+*.pyd
+
+# Local test, coverage, and profiling output
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+*.log
+*.prof
+*.perf.data

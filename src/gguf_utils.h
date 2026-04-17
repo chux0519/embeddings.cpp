@@ -1,6 +1,8 @@
 #pragma once
 
 #include <map>
+#include <cstdlib>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -31,6 +33,27 @@ static enum ggml_type ggml_type_from_str(const std::string& s) {
 
 static bool should_quantize_tensor(const std::string& name,
                                    const ggml_tensor* tensor) {
+  if (tensor->type != GGML_TYPE_F16 && tensor->type != GGML_TYPE_F32) {
+    return false;
+  }
+
+  if (const char* env = std::getenv("EMBEDDINGS_CPP_SKIP_QUANT_PATTERNS")) {
+    std::stringstream patterns(env);
+    std::string pattern;
+    while (std::getline(patterns, pattern, ',')) {
+      if (!pattern.empty() && name.find(pattern) != std::string::npos) {
+        return false;
+      }
+    }
+  }
+
+  if (const char* env = std::getenv("EMBEDDINGS_CPP_KEEP_EMBEDDINGS_F16")) {
+    if (std::atoi(env) != 0 &&
+        name == "embeddings.word_embeddings.weight") {
+      return false;
+    }
+  }
+
   // This used to be a regex, but <regex> has an extreme cost to compile times.
   bool quantize =
       name.rfind("weight") == name.size() - 6;  // ends with 'weight'?
@@ -38,7 +61,6 @@ static bool should_quantize_tensor(const std::string& name,
   quantize &= (ggml_n_dims(tensor) >= 2);
   // do not quantize norm tensors
   quantize &= name.find("embeddings.LayerNorm.weight") == std::string::npos;
-  quantize &= name.find("mlp.up_gate_proj.weight") == std::string::npos;
   quantize &= name.find("attn_ln.weight") == std::string::npos;
   quantize &= name.find("mlp_ln.weight") == std::string::npos;
   return quantize;

@@ -5,6 +5,23 @@ import os
 from gguf import GGUFWriter, GGMLQuantizationType
 from transformers import AutoModel, AutoTokenizer
 
+
+def load_auto_model(repo_id: str):
+    kwargs = {
+        "add_pooling_layer": False,
+        "trust_remote_code": True,
+        "use_memory_efficient_attention": False,
+    }
+    try:
+        return AutoModel.from_pretrained(repo_id, **kwargs)
+    except TypeError:
+        kwargs.pop("use_memory_efficient_attention", None)
+        try:
+            return AutoModel.from_pretrained(repo_id, **kwargs)
+        except TypeError:
+            kwargs.pop("add_pooling_layer", None)
+            return AutoModel.from_pretrained(repo_id, **kwargs)
+
 class BaseConversionConfig:
     """
     Base class for model-specific conversion configurations.
@@ -56,6 +73,9 @@ class BertConversionConfig(BaseConversionConfig):
         if 'LayerNorm' in name or 'bias' in name:
             return torch.float32
         return default_dtype
+
+class XLMRobertaConversionConfig(BertConversionConfig):
+    ARCHITECTURE = "XLMRobertaModel"
     
 class GteConversionConfig(BaseConversionConfig):
     ARCHITECTURE = "GteModel"
@@ -94,7 +114,7 @@ MODEL_CONFIG_MAP = {
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2": BertConversionConfig,
     "shibing624/text2vec-base-multilingual": BertConversionConfig,
     "BAAI/bge-base-zh-v1.5": BertConversionConfig,
-    "BAAI/bge-m3": BertConversionConfig,
+    "BAAI/bge-m3": XLMRobertaConversionConfig,
     "Snowflake/snowflake-arctic-embed-m-v2.0": GteConversionConfig,
     "jinaai/jina-embeddings-v3": JinaV3BertConfig,
 }
@@ -129,8 +149,8 @@ def convert_hf(repo_id, output_path, float_type='f16'):
 
     # load tokenizer and model
     print(f"Loading tokenizer and model for '{repo_id}'...")
-    tokenizer = AutoTokenizer.from_pretrained(repo_id)
-    model = AutoModel.from_pretrained(repo_id, add_pooling_layer=False, trust_remote_code=True, use_memory_efficient_attention=False)
+    tokenizer = AutoTokenizer.from_pretrained(repo_id, trust_remote_code=True)
+    model = load_auto_model(repo_id)
     print("Model and tokenizer loaded.")
     
     hf_config = model.config
