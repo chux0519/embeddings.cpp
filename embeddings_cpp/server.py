@@ -8,7 +8,13 @@ from typing import Any
 from embeddings_cpp import load
 
 
-def _make_app(model_id: str, gguf_path: str | None, cache_dir: str | None, max_batch_size: int | None):
+def _make_app(
+    model_id: str,
+    gguf_path: str | None,
+    cache_dir: str | None,
+    max_batch_size: int | None,
+    max_batch_tokens: int | None,
+):
     try:
         from fastapi import Body, FastAPI, HTTPException
     except ImportError as exc:
@@ -22,8 +28,19 @@ def _make_app(model_id: str, gguf_path: str | None, cache_dir: str | None, max_b
         texts = [value] if isinstance(value, str) else value
         if not isinstance(texts, list) or not all(isinstance(text, str) for text in texts):
             raise HTTPException(status_code=422, detail="inputs must be a string or a list of strings")
+        if not texts:
+            raise HTTPException(status_code=422, detail="inputs cannot be empty")
+        if any(text == "" for text in texts):
+            raise HTTPException(status_code=400, detail="inputs cannot contain empty strings")
         if max_batch_size is not None and len(texts) > max_batch_size:
             raise HTTPException(status_code=413, detail=f"batch size {len(texts)} exceeds max_batch_size={max_batch_size}")
+        if max_batch_tokens is not None:
+            token_count = sum(item.no_pad_len for item in model.batch_tokenize(texts))
+            if token_count > max_batch_tokens:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"batch token count {token_count} exceeds max_batch_tokens={max_batch_tokens}",
+                )
         return texts
 
     @app.get("/health")
@@ -33,6 +50,21 @@ def _make_app(model_id: str, gguf_path: str | None, cache_dir: str | None, max_b
             "model_id": model.spec.model_id,
             "artifact_file": model.spec.artifact_file,
             "uptime_seconds": time.time() - started_at,
+        }
+
+    @app.get("/ready")
+    def ready() -> dict[str, str]:
+        return {"status": "ready"}
+
+    @app.get("/info")
+    def info() -> dict[str, Any]:
+        return {
+            "model_id": model.spec.model_id,
+            "artifact_file": model.spec.artifact_file,
+            "embedding_dim": model.spec.embedding_dim,
+            "pooling": model.spec.pooling,
+            "max_batch_size": max_batch_size,
+            "max_batch_tokens": max_batch_tokens,
         }
 
     @app.post("/embed")
@@ -73,6 +105,7 @@ def main() -> int:
     parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "80")))
     parser.add_argument("--max-batch-size", type=int, default=None)
+    parser.add_argument("--max-batch-tokens", type=int, default=None)
     parser.add_argument("--threads", type=int, default=None)
     args = parser.parse_args()
 
@@ -81,7 +114,7 @@ def main() -> int:
 
     import uvicorn
 
-    app = _make_app(args.model_id, args.gguf_path, args.cache_dir, args.max_batch_size)
+    app = _make_app(args.model_id, args.gguf_path, args.cache_dir, args.max_batch_size, args.max_batch_tokens)
     uvicorn.run(app, host=args.host, port=args.port)
     return 0
 
