@@ -233,12 +233,12 @@ class CppRunner:
     name = "embeddings_cpp"
 
     def __init__(self, spec: ModelSpec, gguf_path: Path):
-        from embeddings_cpp import create_embedding
+        from embeddings_cpp import load
 
         self.spec = spec
         self.gguf_path = gguf_path
-        self.model = create_embedding(str(gguf_path))
-        self.pooling = cpp_pooling(spec.pooling)
+        self.model = load(spec.repo_id, gguf_path=str(gguf_path))
+        self.pooling = self.model.pooling_method
 
     def encode(self, texts: list[str]) -> np.ndarray:
         import numpy as np

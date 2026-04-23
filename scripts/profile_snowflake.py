@@ -47,13 +47,13 @@ def worker(args: argparse.Namespace) -> int:
     texts = make_texts(args.batch_size)
 
     if args.runner == "embeddings_cpp":
-        from embeddings_cpp import PoolingMethod, create_embedding
+        from embeddings_cpp import load
 
         os.environ["EMBEDDINGS_CPP_THREADS"] = str(threads)
-        model = create_embedding(str(args.model))
+        model = load(args.repo_id, gguf_path=str(args.model))
 
         def encode() -> None:
-            model.batch_encode(texts, True, PoolingMethod.CLS)
+            model.batch_encode(texts, True)
 
     elif args.runner == "python_cpu":
         import torch
