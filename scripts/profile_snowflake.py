@@ -269,6 +269,14 @@ fn main() -> Result<()> {
 """
 
 
+def tei_backend_features(backend: str) -> list[str]:
+    if backend == "ort":
+        return ["ort"]
+    if backend == "candle":
+        return ["candle"]
+    raise ValueError(f"unsupported TEI backend: {backend}")
+
+
 def benchmark_tei_engine(args: argparse.Namespace, threads: int, texts: list[str]) -> dict:
     tei_repo_dir = Path(args.tei_repo_dir).resolve()
     if not tei_repo_dir.exists():
@@ -277,11 +285,17 @@ def benchmark_tei_engine(args: argparse.Namespace, threads: int, texts: list[str
     if shutil.which("cargo") is None:
         raise RuntimeError("cargo is required for tei_engine benchmark")
 
-    model_root = resolve_tei_model_root(args.repo_id, Path(args.tei_cache_dir).resolve())
+    if args.tei_backend == "ort":
+        model_root = resolve_tei_model_root(args.repo_id, Path(args.tei_cache_dir).resolve())
+    elif args.tei_backend == "candle":
+        model_root = resolve_model_root(args.repo_id)
+    else:
+        raise ValueError(f"unsupported TEI backend: {args.tei_backend}")
     with tempfile.TemporaryDirectory(prefix="tei-engine-bench-") as tmp:
         tmpdir = Path(tmp)
         src_dir = tmpdir / "src"
         src_dir.mkdir(parents=True, exist_ok=True)
+        features = ", ".join(f'"{feature}"' for feature in tei_backend_features(args.tei_backend))
         cargo_toml = f"""
 [package]
 name = "tei-engine-bench"
@@ -294,7 +308,7 @@ serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 tokenizers = {{ version = "0.21.0", default-features = false, features = ["onig", "esaxx_fast"] }}
 tokio = {{ version = "1.25", features = ["rt", "sync"] }}
-text-embeddings-backend = {{ path = "{(tei_repo_dir / 'backends').as_posix()}", features = ["ort"] }}
+text-embeddings-backend = {{ path = "{(tei_repo_dir / 'backends').as_posix()}", features = [{features}] }}
 text-embeddings-backend-core = {{ path = "{(tei_repo_dir / 'backends' / 'core').as_posix()}" }}
 
 [patch.crates-io]
@@ -345,7 +359,10 @@ candle-flash-attn = {{ git = "https://github.com/huggingface/candle", rev = "638
     for line in reversed(completed.stdout.splitlines()):
         line = line.strip()
         if line.startswith("{") and line.endswith("}"):
-            return json.loads(line)
+            row = json.loads(line)
+            row["runner"] = f"tei_engine_{args.tei_backend}"
+            row["tei_backend"] = args.tei_backend
+            return row
     raise RuntimeError(f"tei_engine produced no json output:\n{completed.stdout[-4000:]}\n{completed.stderr[-4000:]}")
 
 
@@ -462,6 +479,8 @@ def run_child(args: argparse.Namespace, threads: int, batch_size: int) -> dict:
         "--timeout",
         str(args.timeout),
     ]
+    if args.runner == "tei_engine":
+        cmd.extend(["--tei-backend", args.tei_backend])
     completed = subprocess.run(
         cmd,
         cwd=ROOT,
@@ -527,6 +546,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo-id", default=DEFAULT_REPO_ID)
     parser.add_argument("--tei-repo-dir", type=Path, default=DEFAULT_TEI_REPO)
     parser.add_argument("--tei-cache-dir", type=Path, default=ROOT / ".cache" / "tei")
+    parser.add_argument("--tei-backend", choices=("ort", "candle"), default="ort")
     parser.add_argument("--threads", nargs="+", type=int, default=[1, 2, 4, 6, 8, 10, 12, 16])
     parser.add_argument("--batch-sizes", nargs="+", type=int, default=[8])
     parser.add_argument("--batch-size", type=int, default=8, help=argparse.SUPPRESS)
