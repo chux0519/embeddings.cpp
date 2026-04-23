@@ -4,8 +4,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -15,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT / "scripts" / "output"
 DEFAULT_MODEL = ROOT / "models" / "snowflake-arctic-embed-m-v2.0.q8_0.gguf"
 DEFAULT_REPO_ID = "Snowflake/snowflake-arctic-embed-m-v2.0"
+DEFAULT_TEI_REPO = ROOT.parent / "text-embeddings-inference"
 TEXTS = [
     "你好，今天天气怎么样？",
     "What's the weather like today?",
@@ -38,6 +41,312 @@ def rss_mb() -> float:
         except psutil.Error:
             pass
     return total / 1024 / 1024
+
+
+def resolve_model_root(repo_id: str) -> Path:
+    from huggingface_hub import snapshot_download
+
+    offline = os.environ.get("HF_HUB_OFFLINE") == "1"
+    return Path(
+        snapshot_download(
+            repo_id,
+            local_files_only=offline,
+            allow_patterns=[
+                "config.json",
+                "modules.json",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "sentence_*",
+                "config_sentence_transformers.json",
+                "*.safetensors",
+                "*.bin",
+                "*.json",
+            ],
+        )
+    )
+
+
+def resolve_tei_model_root(repo_id: str, tei_cache_dir: Path) -> Path:
+    model_key = repo_id.replace("/", "--")
+    snapshots_dir = tei_cache_dir / f"models--{model_key}" / "snapshots"
+    if snapshots_dir.exists():
+        snapshots = sorted((p for p in snapshots_dir.iterdir() if p.is_dir()), key=lambda p: p.name)
+        if snapshots:
+            return snapshots[-1]
+
+    from huggingface_hub import snapshot_download
+
+    return Path(
+        snapshot_download(
+            repo_id,
+            allow_patterns=[
+                "config.json",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "onnx/model.onnx",
+                "onnx/model.onnx_data",
+                "model.onnx",
+                "model.onnx_data",
+                "modules.json",
+                "config_sentence_transformers.json",
+                "sentence_*",
+            ],
+        )
+    )
+
+
+def tei_engine_harness_source() -> str:
+    return r"""use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::cmp::max;
+use std::fs;
+use std::path::PathBuf;
+use std::time::Instant;
+use text_embeddings_backend::{Backend as TeiBackend, DType, ModelType, Pool};
+use text_embeddings_backend_core::{Batch, Embedding};
+use tokenizers::{Encoding, Tokenizer};
+
+#[derive(Deserialize)]
+struct InputPayload {
+    model_root: String,
+    texts: Vec<String>,
+    warmup: usize,
+    iterations: usize,
+    batch_size: usize,
+    threads: usize,
+}
+
+#[derive(Serialize)]
+struct OutputPayload {
+    effective_threads: usize,
+    threads: usize,
+    runner: &'static str,
+    batch_size: usize,
+    iterations: usize,
+    warmup: usize,
+    latency_ms_mean: f64,
+    latency_ms_p50: f64,
+    latency_ms_p95: f64,
+    texts_per_second: f64,
+    rss_mb: f64,
+}
+
+fn load_tokenizer(model_root: &std::path::Path) -> Result<Tokenizer> {
+    let tokenizer_path = model_root.join("tokenizer.json");
+    let mut tokenizer =
+        Tokenizer::from_file(tokenizer_path).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    tokenizer.with_padding(None);
+    Ok(tokenizer)
+}
+
+fn batch(encodings: Vec<Encoding>) -> Batch {
+    let mut input_ids = Vec::new();
+    let mut token_type_ids = Vec::new();
+    let mut position_ids = Vec::new();
+    let mut cumulative_seq_lengths = Vec::with_capacity(encodings.len() + 1);
+    cumulative_seq_lengths.push(0);
+    let mut max_length = 0;
+    let mut cumulative_length = 0;
+
+    for encoding in &encodings {
+        let encoding_length = encoding.len() as u32;
+        input_ids.extend(encoding.get_ids().to_vec());
+        token_type_ids.extend(encoding.get_type_ids().to_vec());
+        position_ids.extend(0..encoding_length);
+        cumulative_length += encoding_length;
+        cumulative_seq_lengths.push(cumulative_length);
+        max_length = max(max_length, encoding_length);
+    }
+
+    Batch {
+        input_ids,
+        token_type_ids,
+        position_ids,
+        cumulative_seq_lengths,
+        max_length,
+        pooled_indices: (0..encodings.len() as u32).collect(),
+        raw_indices: vec![],
+    }
+}
+
+fn rss_mb() -> f64 {
+    let Ok(status) = fs::read_to_string("/proc/self/status") else {
+        return 0.0;
+    };
+    for line in status.lines() {
+        if let Some(rest) = line.strip_prefix("VmRSS:") {
+            let kb = rest
+                .split_whitespace()
+                .next()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(0.0);
+            return kb / 1024.0;
+        }
+    }
+    0.0
+}
+
+fn percentile_ms(mut values_ms: Vec<f64>, percentile: f64) -> f64 {
+    values_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let idx = ((values_ms.len() - 1) as f64 * percentile).round() as usize;
+    values_ms[idx]
+}
+
+async fn encode_once(backend: &TeiBackend, tokenizer: &Tokenizer, texts: &[String]) -> Result<()> {
+    let encodings = texts
+        .iter()
+        .map(|text| {
+            tokenizer
+                .encode(text.as_str(), true)
+                .map_err(|e| anyhow::anyhow!(e.to_string()))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let (embeddings, _) = backend.embed(batch(encodings)).await?;
+    for (_, embedding) in embeddings {
+        match embedding {
+            Embedding::Pooled(v) => {
+                let _ = v.len();
+            }
+            Embedding::All(v) => {
+                let _ = v.len();
+            }
+        }
+    }
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let input_path = std::env::args()
+        .nth(1)
+        .context("missing input json path")?;
+    let input: InputPayload = serde_json::from_str(&fs::read_to_string(&input_path)?)?;
+    let model_root = PathBuf::from(input.model_root);
+    let tokenizer = load_tokenizer(&model_root)?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let backend = runtime.block_on(TeiBackend::new(
+        model_root,
+        None,
+        DType::Float32,
+        ModelType::Embedding(Pool::Cls),
+        None,
+        String::new(),
+        None,
+        "tei-engine-bench".to_string(),
+    ))?;
+
+    for _ in 0..input.warmup {
+        runtime.block_on(encode_once(&backend, &tokenizer, &input.texts))?;
+    }
+
+    let mut timings_ms = Vec::with_capacity(input.iterations);
+    let mut peak_rss = rss_mb();
+    for _ in 0..input.iterations {
+        let start = Instant::now();
+        runtime.block_on(encode_once(&backend, &tokenizer, &input.texts))?;
+        timings_ms.push(start.elapsed().as_secs_f64() * 1000.0);
+        peak_rss = peak_rss.max(rss_mb());
+    }
+
+    let mean_ms = timings_ms.iter().sum::<f64>() / timings_ms.len() as f64;
+    let output = OutputPayload {
+        effective_threads: input.threads,
+        threads: input.threads,
+        runner: "tei_engine",
+        batch_size: input.batch_size,
+        iterations: input.iterations,
+        warmup: input.warmup,
+        latency_ms_mean: mean_ms,
+        latency_ms_p50: percentile_ms(timings_ms.clone(), 0.50),
+        latency_ms_p95: percentile_ms(timings_ms.clone(), 0.95),
+        texts_per_second: input.batch_size as f64 / (mean_ms / 1000.0),
+        rss_mb: peak_rss,
+    };
+    println!("{}", serde_json::to_string(&output)?);
+    Ok(())
+}
+"""
+
+
+def benchmark_tei_engine(args: argparse.Namespace, threads: int, texts: list[str]) -> dict:
+    tei_repo_dir = Path(args.tei_repo_dir).resolve()
+    if not tei_repo_dir.exists():
+        raise FileNotFoundError(f"TEI repo not found: {tei_repo_dir}")
+
+    if shutil.which("cargo") is None:
+        raise RuntimeError("cargo is required for tei_engine benchmark")
+
+    model_root = resolve_tei_model_root(args.repo_id, Path(args.tei_cache_dir).resolve())
+    with tempfile.TemporaryDirectory(prefix="tei-engine-bench-") as tmp:
+        tmpdir = Path(tmp)
+        src_dir = tmpdir / "src"
+        src_dir.mkdir(parents=True, exist_ok=True)
+        cargo_toml = f"""
+[package]
+name = "tei-engine-bench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+serde = {{ version = "1", features = ["derive"] }}
+serde_json = "1"
+tokenizers = {{ version = "0.21.0", default-features = false, features = ["onig", "esaxx_fast"] }}
+tokio = {{ version = "1.25", features = ["rt", "sync"] }}
+text-embeddings-backend = {{ path = "{(tei_repo_dir / 'backends').as_posix()}", features = ["ort"] }}
+text-embeddings-backend-core = {{ path = "{(tei_repo_dir / 'backends' / 'core').as_posix()}" }}
+
+[patch.crates-io]
+cudarc = {{ git = "https://github.com/Narsil/cudarc", rev = "8b4f18b4bcd5e4b1a9daf40abc3a2e27f83f06e9" }}
+candle = {{ git = "https://github.com/huggingface/candle", rev = "6381023982251959a2c9bab7378b3013304e192b", package = "candle-core" }}
+candle-nn = {{ git = "https://github.com/huggingface/candle", rev = "6381023982251959a2c9bab7378b3013304e192b", package = "candle-nn" }}
+candle-transformers = {{ git = "https://github.com/huggingface/candle", rev = "6381023982251959a2c9bab7378b3013304e192b", package = "candle-transformers" }}
+candle-flash-attn = {{ git = "https://github.com/huggingface/candle", rev = "6381023982251959a2c9bab7378b3013304e192b", package = "candle-flash-attn" }}
+"""
+        (tmpdir / "Cargo.toml").write_text(cargo_toml.strip() + "\n", encoding="utf-8")
+        (src_dir / "main.rs").write_text(tei_engine_harness_source(), encoding="utf-8")
+        input_path = tmpdir / "input.json"
+        input_path.write_text(
+            json.dumps(
+                {
+                    "model_root": str(model_root),
+                    "texts": texts,
+                    "warmup": args.warmup,
+                    "iterations": args.iterations,
+                    "batch_size": len(texts),
+                    "threads": threads,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        env = os.environ.copy()
+        env["RAYON_NUM_THREADS"] = str(threads)
+        env["OMP_NUM_THREADS"] = str(threads)
+        env["MKL_NUM_THREADS"] = str(threads)
+        env["OPENBLAS_NUM_THREADS"] = str(threads)
+        env.setdefault("CARGO_TARGET_DIR", str(ROOT / ".cache" / "tei_engine_target"))
+        cmd = ["cargo", "run", "--release", "--quiet", "--", str(input_path)]
+        completed = subprocess.run(
+            cmd,
+            cwd=tmpdir,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=args.timeout,
+            check=False,
+        )
+
+    if completed.returncode != 0:
+        raise RuntimeError((completed.stderr or completed.stdout)[-4000:])
+
+    for line in reversed(completed.stdout.splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            return json.loads(line)
+    raise RuntimeError(f"tei_engine produced no json output:\n{completed.stdout[-4000:]}\n{completed.stderr[-4000:]}")
 
 
 def worker(args: argparse.Namespace) -> int:
@@ -79,6 +388,11 @@ def worker(args: argparse.Namespace) -> int:
                 hidden = outputs[0] if isinstance(outputs, tuple) else outputs.last_hidden_state
                 emb = hidden[:, 0]
                 torch.nn.functional.normalize(emb, p=2, dim=1)
+
+    elif args.runner == "tei_engine":
+        row = benchmark_tei_engine(args, threads, texts)
+        print(json.dumps(row, ensure_ascii=False), flush=True)
+        return 0
 
     else:
         raise ValueError(f"unsupported runner: {args.runner}")
@@ -145,6 +459,8 @@ def run_child(args: argparse.Namespace, threads: int, batch_size: int) -> dict:
         str(args.warmup),
         "--iterations",
         str(args.iterations),
+        "--timeout",
+        str(args.timeout),
     ]
     completed = subprocess.run(
         cmd,
@@ -206,9 +522,11 @@ def write_outputs(rows: list[dict], output_dir: Path) -> tuple[Path, Path]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Reproducible Snowflake CPU profiling for embeddings.cpp.")
-    parser.add_argument("--runner", choices=("embeddings_cpp", "python_cpu"), default="embeddings_cpp")
+    parser.add_argument("--runner", choices=("embeddings_cpp", "python_cpu", "tei_engine"), default="embeddings_cpp")
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--repo-id", default=DEFAULT_REPO_ID)
+    parser.add_argument("--tei-repo-dir", type=Path, default=DEFAULT_TEI_REPO)
+    parser.add_argument("--tei-cache-dir", type=Path, default=ROOT / ".cache" / "tei")
     parser.add_argument("--threads", nargs="+", type=int, default=[1, 2, 4, 6, 8, 10, 12, 16])
     parser.add_argument("--batch-sizes", nargs="+", type=int, default=[8])
     parser.add_argument("--batch-size", type=int, default=8, help=argparse.SUPPRESS)

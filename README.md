@@ -116,7 +116,10 @@ uv run scripts/alignment.py --convert-missing --benchmark
 ```
 
 The benchmark report compares Python `transformers` CPU, `embeddings.cpp`, and
-TEI when enabled for the model.
+TEI when enabled for the model. For Snowflake on CPU, the only cross-implementation
+format all three runners share is `fp32`, so the README keeps the fair
+cross-runner table in `fp32` and moves `embeddings.cpp` quantization results to a
+separate trade-off table.
 
 Measured on this PC:
 
@@ -125,23 +128,62 @@ Measured on this PC:
 - Memory: 62 GiB RAM
 - OS: Ubuntu Linux 5.15
 - Model: `Snowflake/snowflake-arctic-embed-m-v2.0`
-- GGUF: `models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`
+- Fair baseline GGUF: `models/snowflake-arctic-embed-m-v2.0.fp32.gguf`
+- Production GGUF: `models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`
 
-Batch-8 result table:
+Fair cross-runner baseline, `threads=12`, `batch=8`, serial runs:
 
-| Runner | Config | Batch | Mean ms | P50 ms | P95 ms | Text/s | RSS MB |
-|---|---|---:|---:|---:|---:|---:|---:|
-| `python_cpu` | `threads=10`, fp32 HF model | 8 | 64.24 | 63.95 | 67.91 | 124.53 | 1134.1 |
-| `embeddings.cpp` | `threads=12`, `q4_k_mlp_q8_attn.gguf`, default runtime | 8 | 58.63 | 57.81 | 64.13 | 136.45 | 484.8 |
-| `tei` | `cpu-1.9`, `--max-batch-tokens 8192` | 8 | 90.90 | 94.00 | 118.24 | 88.01 | 11100.2 |
+| Runner | Format | Mean ms | P50 ms | P95 ms | Text/s | RSS MB |
+|---|---|---:|---:|---:|---:|---:|
+| `python_cpu` | HF `fp32` | 59.49 | 58.71 | 64.05 | 134.48 | 1128.0 |
+| `tei_engine` | ORT `fp32` | 60.54 | 58.74 | 67.32 | 132.14 | 1955.8 |
+| `embeddings.cpp` | GGUF `fp32` | 172.24 | 136.39 | 352.82 | 46.45 | 1470.8 |
 
-The local Python and `embeddings.cpp` rows above were re-measured serially on
-this machine after enabling the Snowflake/GTE default CPU runtime in code. For
-Snowflake/GTE on CPU, `embeddings.cpp` now enables flash attention and CPU
+For this Snowflake CPU path, the fast TEI row above is mostly an ONNX Runtime
+result, not a router result. TEI's ORT backend applies graph optimization on
+this model; that is why the `tei_engine` line is close to Python `fp32`. A
+future Candle-only TEI row would be a different backend and should be reported
+as a separate line, not mixed into the main `fp32` baseline.
+
+`embeddings.cpp` quantization trade-offs on the same machine, same `threads=12`,
+same `batch=8`. These rows come from isolated per-quant runs:
+
+| Quant | Size MB | Mean ms | Text/s | RSS MB | Worst Min Cos | Batch Min Cos |
+|---|---:|---:|---:|---:|---:|---:|
+| `fp16` | 591.3 | 128.87 | 62.08 | 888.3 | 0.999985 | 1.000000 |
+| `q8_0` | 318.3 | 95.77 | 83.53 | 615.2 | 0.998978 | 1.000000 |
+| `q6_k` | 247.8 | 98.51 | 81.21 | 545.0 | 0.992130 | 1.000000 |
+| `q5_k` | 209.2 | 109.29 | 73.20 | 506.1 | 0.983449 | 1.000000 |
+| `q5_0` | 209.2 | 139.20 | 57.47 | 506.2 | 0.984581 | 1.000000 |
+| `q4_0_attnf16` | 211.6 | 67.87 | 117.88 | 508.4 | 0.983455 | 1.000000 |
+| `q4_0_mlp_q5_0_attn` | 176.1 | 77.90 | 102.69 | 473.0 | 0.967307 | 1.000000 |
+| `q4_0_mlp_q6_k_attn` | 179.7 | 69.51 | 115.09 | 476.6 | 0.978769 | 1.000000 |
+| `q4_0_mlp_q8_attn` | 186.3 | 61.03 | 131.09 | 483.4 | 0.981470 | 1.000000 |
+| `q4_k_mlp_attnf16` | 211.6 | 63.58 | 125.83 | 508.6 | 0.991325 | 0.999550 |
+| `q4_k_mlp_q8_attn` | 186.3 | 58.86 | 135.91 | 483.3 | 0.991226 | 0.999321 |
+| `q4_0` | 172.8 | 62.17 | 128.67 | 469.8 | 0.948146 | 1.000000 |
+| `q4_k` | 172.8 | 47.41 | 168.74 | 469.7 | 0.936614 | 0.994469 |
+| `q4_0_embf16` | 436.0 | 52.28 | 153.02 | 732.9 | 0.946242 | 1.000000 |
+| `q4_0_mlpf16` | 289.2 | 158.27 | 50.55 | 586.4 | 0.956237 | 1.000000 |
+| `q4_0_mlp_q4_k_attn` | 172.8 | 50.50 | 158.41 | 469.7 | 0.944264 | 0.997765 |
+
+Observed on this CPU:
+
+- `q8_0` is the conservative compression point: much lower RSS than `fp32`, with
+  very small output drift.
+- `q6_k` is the smallest config that still keeps `Worst Min Cos` above `0.99` in
+  this Snowflake suite.
+- `q4_k_mlp_q8_attn` is the current production default because it stays close to
+  Python `fp32` throughput while cutting RSS by more than half.
+- `q4_k`, `q4_0`, `q4_0_embf16`, and `q4_0_mlp_q4_k_attn` are fast, but the
+  output drift is large enough that they are not the default recommendation for
+  correctness-sensitive use.
+- `q4_0_mlpf16` is neither fast nor especially accurate on this model, so it is
+  not an attractive point in the trade-off space.
+
+For Snowflake/GTE on CPU, `embeddings.cpp` now enables flash attention and CPU
 repack by default; set `EMBEDDINGS_CPP_FLASH_ATTN=0` or
-`EMBEDDINGS_CPP_CPU_REPACK=0` only when debugging or checking regressions. The
-TEI row is from the same machine and batch size; RSS is read from `docker
-stats`.
+`EMBEDDINGS_CPP_CPU_REPACK=0` only when debugging or checking regressions.
 
 Standalone benchmark runs also write JSON and Markdown reports under
 `scripts/output/`:

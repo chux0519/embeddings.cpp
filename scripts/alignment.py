@@ -50,6 +50,7 @@ MODEL_SPECS: dict[str, ModelSpec] = {
 }
 
 QUANTIZATIONS = (
+    "fp32",
     "fp16",
     "q8_0",
     "q6_k",
@@ -57,6 +58,14 @@ QUANTIZATIONS = (
     "q5_0",
     "q4_k",
     "q4_0",
+    "q4_0_attnf16",
+    "q4_0_embf16",
+    "q4_0_mlpf16",
+    "q4_0_mlp_q4_k_attn",
+    "q4_0_mlp_q5_0_attn",
+    "q4_0_mlp_q6_k_attn",
+    "q4_0_mlp_q8_attn",
+    "q4_k_mlp_attnf16",
     "q3_k",
     "q2_k",
     "q4_k_mlp_q8_attn",
@@ -290,10 +299,11 @@ def convert_missing(spec: ModelSpec, models_dir: Path, quantization: str) -> Pat
     path = gguf_path(models_dir, spec, quantization)
     if path.exists():
         return path
-    if quantization != "fp16":
-        raise RuntimeError(f"Cannot auto-convert missing non-fp16 GGUF: {path}")
+    if quantization not in {"fp16", "fp32"}:
+        raise RuntimeError(f"Cannot auto-convert missing non-float GGUF: {path}")
     models_dir.mkdir(parents=True, exist_ok=True)
-    cmd = [sys.executable, str(SCRIPTS_DIR / "convert.py"), spec.repo_id, str(path), "f16"]
+    float_type = "f32" if quantization == "fp32" else "f16"
+    cmd = [sys.executable, str(SCRIPTS_DIR / "convert.py"), spec.repo_id, str(path), float_type]
     subprocess.run(cmd, cwd=ROOT, check=True)
     return path
 
