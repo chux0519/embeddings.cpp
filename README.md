@@ -115,19 +115,15 @@ Include CPU performance comparisons:
 uv run scripts/alignment.py --convert-missing --benchmark
 ```
 
-The benchmark report compares:
+The benchmark report compares Python `transformers` CPU, `embeddings.cpp`, and
+TEI when enabled for the model. The conclusions are written as table rows with
+these columns:
 
-- Python `transformers` CPU
-- `embeddings.cpp`
-- TEI, when enabled for the model
-
-Performance rows include:
-
-- mean latency
-- p50 latency
-- p95 latency
-- throughput in texts per second
-- RSS memory in MB
+| Runner | Batch | Mean ms | P50 ms | P95 ms | Text/s | RSS MB |
+|---|---:|---:|---:|---:|---:|---:|
+| `python_cpu` | 8 | ... | ... | ... | ... | ... |
+| `embeddings.cpp` | 8 | ... | ... | ... | ... | ... |
+| `tei` | 8 | ... | ... | ... | ... | ... |
 
 Standalone benchmark runs also write JSON and Markdown reports under
 `scripts/output/`:
