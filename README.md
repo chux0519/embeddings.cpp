@@ -171,8 +171,24 @@ pip install "embeddings-cpp[hub]"
 ## HTTP Server
 
 The server can load a registered model from Hugging Face or a local GGUF path.
-For a Snowflake deployment, this is the closest replacement for a TEI CPU setup
-such as:
+For a Snowflake deployment, `embeddings.cpp` is intended to replace a TEI CPU
+setup.
+
+### TEI Comparison
+
+For `Snowflake/snowflake-arctic-embed-m-v2.0`, the deployment mapping is:
+
+| Concern | TEI | embeddings.cpp |
+|---|---|---|
+| Container image | `ghcr.io/huggingface/text-embeddings-inference:cpu-1.9` | `ghcr.io/<owner>/embeddings-cpp-server:<tag>` or a locally built image |
+| Model source | Hugging Face model repo | Registered optimized GGUF from `chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp` or `--gguf-path` |
+| Main request path | `POST /embed` | `POST /embed` |
+| OpenAI-style path | not the primary TEI path | `POST /v1/embeddings` |
+| Batch token guard | `--max-batch-tokens` | `--max-batch-tokens` |
+| Thread control | TEI runtime defaults | detected CPU concurrency by default, override with `--threads` or `EMBEDDINGS_CPP_THREADS` only after measurement |
+| Health probes | `/health` | `/health`, `/ready`, `/info` |
+
+The TEI Snowflake command:
 
 ```bash
 docker run --rm -p 8081:80 \
@@ -214,6 +230,10 @@ For client compatibility, the main request surfaces are:
 - TEI: `POST /embed`
 - embeddings.cpp: `POST /embed`
 - OpenAI-style clients: `POST /v1/embeddings`
+
+For correctness work, the Snowflake path is checked against both Python
+`transformers` CPU output and TEI. See `docs/TEST_MATRIX.md` and
+`scripts/server_compare.py`.
 
 Container images can be published to GHCR with
 `.github/workflows/publish-server-image.yml`, which publishes tags in the form
