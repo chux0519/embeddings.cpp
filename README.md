@@ -146,6 +146,11 @@ Known optimized GGUF artifacts are listed in `embeddings_cpp/registry.json`.
 The default Snowflake artifact is published under the `chux0519` Hugging Face
 namespace.
 
+- Model repository:
+  `https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp`
+- Direct GGUF file:
+  `https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`
+
 ```python
 from embeddings_cpp import load
 
@@ -165,22 +170,54 @@ pip install "embeddings-cpp[hub]"
 
 ## HTTP Server
 
-The server can load a registered model from Hugging Face or a local GGUF path:
+The server can load a registered model from Hugging Face or a local GGUF path.
+For a Snowflake deployment, this is the closest replacement for a TEI CPU setup
+such as:
+
+```bash
+docker run --rm -p 8081:80 \
+  ghcr.io/huggingface/text-embeddings-inference:cpu-1.9 \
+  --model-id Snowflake/snowflake-arctic-embed-m-v2.0 \
+  --max-batch-tokens 8192
+```
+
+The equivalent `embeddings.cpp` server run is:
 
 ```bash
 python -m embeddings_cpp.server \
   --model-id Snowflake/snowflake-arctic-embed-m-v2.0 \
-  --port 8080
+  --port 8080 \
+  --max-batch-tokens 8192
+```
+
+Build and run the Docker image locally:
+
+```bash
+docker build -t embeddings-cpp-server:local .
+
+docker run --rm -p 8080:80 \
+  embeddings-cpp-server:local \
+  --model-id Snowflake/snowflake-arctic-embed-m-v2.0 \
+  --max-batch-tokens 8192
 ```
 
 Endpoints:
 
 - `GET /health`
+- `GET /ready`
+- `GET /info`
 - `POST /embed` with `{"inputs": ["hello", "world"]}`
 - `POST /v1/embeddings` with an OpenAI-compatible embeddings request
 
+For client compatibility, the main request surfaces are:
+
+- TEI: `POST /embed`
+- embeddings.cpp: `POST /embed`
+- OpenAI-style clients: `POST /v1/embeddings`
+
 Container images can be published to GHCR with
-`.github/workflows/publish-server-image.yml`.
+`.github/workflows/publish-server-image.yml`, which publishes tags in the form
+`ghcr.io/<owner>/embeddings-cpp-server:<tag>`.
 
 ## Building from Source
 
