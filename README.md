@@ -115,6 +115,29 @@ Include CPU performance comparisons:
 uv run scripts/alignment.py --convert-missing --benchmark
 ```
 
+The benchmark report compares:
+
+- Python `transformers` CPU
+- `embeddings.cpp`
+- TEI, when enabled for the model
+
+Performance rows include:
+
+- mean latency
+- p50 latency
+- p95 latency
+- throughput in texts per second
+- RSS memory in MB
+
+Standalone benchmark runs also write JSON and Markdown reports under
+`scripts/output/`:
+
+```bash
+uv run scripts/benchmark.py \
+  --model-id Snowflake/snowflake-arctic-embed-m-v2.0 \
+  --gguf-path models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf
+```
+
 Pin the C++ CPU thread count while tuning:
 
 ```bash
@@ -233,7 +256,8 @@ For client compatibility, the main request surfaces are:
 
 For correctness work, the Snowflake path is checked against both Python
 `transformers` CPU output and TEI. See `docs/TEST_MATRIX.md` and
-`scripts/server_compare.py`.
+`scripts/server_compare.py`. For performance work, `scripts/alignment.py` and
+`scripts/benchmark.py` report both inference speed and RSS memory.
 
 Container images can be published to GHCR with
 `.github/workflows/publish-server-image.yml`, which publishes tags in the form
