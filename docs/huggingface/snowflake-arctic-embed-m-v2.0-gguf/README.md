@@ -52,11 +52,14 @@ cmake --build build -j "$(nproc)"
 
 ## Recommended CPU Runtime
 
+The optimized CPU runtime is now the default for this artifact. You can run:
+
 ```bash
-EMBEDDINGS_CPP_CPU_REPACK=1 \
-EMBEDDINGS_CPP_FLASH_ATTN=1 \
 python your_script.py
 ```
+
+Set `EMBEDDINGS_CPP_CPU_REPACK=0` or `EMBEDDINGS_CPP_FLASH_ATTN=0` only when
+debugging or checking regressions.
 
 By default, `embeddings.cpp` uses the detected CPU concurrency for model
 inference. Set `EMBEDDINGS_CPP_THREADS=N` only when pinning a deployment to a

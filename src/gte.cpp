@@ -18,7 +18,10 @@ namespace embeddings {
 
 static bool use_flash_attn_ext() {
   const char *env = std::getenv("EMBEDDINGS_CPP_FLASH_ATTN");
-  return env && std::atoi(env) != 0;
+  if (!env) {
+    return true;
+  }
+  return std::atoi(env) != 0;
 }
 
 // === helper for rotary embedding cache ===

@@ -131,14 +131,16 @@ Batch-8 result table:
 
 | Runner | Config | Batch | Mean ms | P50 ms | P95 ms | Text/s | RSS MB |
 |---|---|---:|---:|---:|---:|---:|---:|
-| `python_cpu` | `threads=10`, fp32 HF model | 8 | 62.57 | 61.86 | 66.07 | 127.86 | 1156.5 |
-| `embeddings.cpp` | `threads=11`, `q4_k_mlp_q8_attn.gguf`, flash-attn + cpu-repack | 8 | 61.56 | 60.08 | 68.68 | 129.96 | 520.8 |
+| `python_cpu` | `threads=10`, fp32 HF model | 8 | 64.24 | 63.95 | 67.91 | 124.53 | 1134.1 |
+| `embeddings.cpp` | `threads=12`, `q4_k_mlp_q8_attn.gguf`, default runtime | 8 | 58.63 | 57.81 | 64.13 | 136.45 | 484.8 |
 | `tei` | `cpu-1.9`, `--max-batch-tokens 8192` | 8 | 90.90 | 94.00 | 118.24 | 88.01 | 11100.2 |
 
-The local Python and `embeddings.cpp` rows above were measured serially on this
-machine. The `embeddings.cpp` row uses the registry runtime settings
-`EMBEDDINGS_CPP_FLASH_ATTN=1` and `EMBEDDINGS_CPP_CPU_REPACK=1`. The TEI row is
-from the same machine with the same batch size; RSS is read from `docker
+The local Python and `embeddings.cpp` rows above were re-measured serially on
+this machine after enabling the Snowflake/GTE default CPU runtime in code. For
+Snowflake/GTE on CPU, `embeddings.cpp` now enables flash attention and CPU
+repack by default; set `EMBEDDINGS_CPP_FLASH_ATTN=0` or
+`EMBEDDINGS_CPP_CPU_REPACK=0` only when debugging or checking regressions. The
+TEI row is from the same machine and batch size; RSS is read from `docker
 stats`.
 
 Standalone benchmark runs also write JSON and Markdown reports under
@@ -226,11 +228,17 @@ For `Snowflake/snowflake-arctic-embed-m-v2.0`, the deployment mapping is:
 The TEI Snowflake command:
 
 ```bash
+mkdir -p .cache/tei
+
 docker run --rm -p 8081:80 \
+  -v "$PWD/.cache/tei:/data" \
   ghcr.io/huggingface/text-embeddings-inference:cpu-1.9 \
   --model-id Snowflake/snowflake-arctic-embed-m-v2.0 \
   --max-batch-tokens 8192
 ```
+
+Reusing `.cache/tei` avoids downloading the same TEI model artifacts again on
+every benchmark run.
 
 The equivalent `embeddings.cpp` server run is:
 

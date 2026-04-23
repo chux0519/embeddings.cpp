@@ -47,7 +47,10 @@ bool should_profile() {
 
 bool should_use_cpu_repack() {
   const char *env = std::getenv("EMBEDDINGS_CPP_CPU_REPACK");
-  return env && std::atoi(env) != 0;
+  if (!env) {
+    return true;
+  }
+  return std::atoi(env) != 0;
 }
 
 using Clock = std::chrono::steady_clock;
