@@ -116,14 +116,28 @@ uv run scripts/alignment.py --convert-missing --benchmark
 ```
 
 The benchmark report compares Python `transformers` CPU, `embeddings.cpp`, and
-TEI when enabled for the model. The conclusions are written as table rows with
-these columns:
+TEI when enabled for the model.
 
-| Runner | Batch | Mean ms | P50 ms | P95 ms | Text/s | RSS MB |
-|---|---:|---:|---:|---:|---:|---:|
-| `python_cpu` | 8 | ... | ... | ... | ... | ... |
-| `embeddings.cpp` | 8 | ... | ... | ... | ... | ... |
-| `tei` | 8 | ... | ... | ... | ... | ... |
+Measured on this PC:
+
+- CPU: Intel Xeon E5-2673 v3 @ 2.40GHz
+- Cores: 12 vCPU, 1 socket, SMT off
+- Memory: 62 GiB RAM
+- OS: Ubuntu Linux 5.15
+- Model: `Snowflake/snowflake-arctic-embed-m-v2.0`
+- GGUF: `models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`
+
+Batch-8 result table:
+
+| Runner | Config | Batch | Mean ms | P50 ms | P95 ms | Text/s | RSS MB |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `python_cpu` | `threads=10`, fp32 HF model | 8 | 62.57 | 61.86 | 66.07 | 127.86 | 1156.5 |
+| `embeddings.cpp` | `threads=12`, `q4_k_mlp_q8_attn.gguf` | 8 | 99.98 | 91.30 | 147.46 | 80.02 | 520.4 |
+| `tei` | `cpu-1.9`, `--max-batch-tokens 8192` | 8 | 90.90 | 94.00 | 118.24 | 88.01 | 11100.2 |
+
+The local Python and `embeddings.cpp` rows above were measured serially with
+`warmup=2` and `iterations=10`. The TEI row is from the same machine with the
+same batch size; RSS is read from `docker stats`.
 
 Standalone benchmark runs also write JSON and Markdown reports under
 `scripts/output/`:
