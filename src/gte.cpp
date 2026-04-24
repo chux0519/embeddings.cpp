@@ -24,6 +24,17 @@ static bool use_flash_attn_ext() {
   return std::atoi(env) != 0;
 }
 
+static ggml_tensor *ggml_norm_affine_inplace(struct ggml_context *ctx,
+                                             struct ggml_tensor *x,
+                                             struct ggml_tensor *weight,
+                                             struct ggml_tensor *bias,
+                                             float eps) {
+  x = ggml_norm_inplace(ctx, x, eps);
+  x = ggml_mul_inplace(ctx, x, weight);
+  x = ggml_add_inplace(ctx, x, bias);
+  return x;
+}
+
 // === helper for rotary embedding cache ===
 static std::pair<std::vector<float>, std::vector<float>> build_rope_cache(
     const std::vector<int32_t> &positions, int dim, float rope_theta) {
@@ -265,13 +276,13 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
   }
 
   auto *emb = ggml_get_rows(ctx0, embeddings.word_embeddings, input_ids);
-  emb = ggml_add(
+  emb = ggml_add_inplace(
       ctx0, emb,
       ggml_get_rows(ctx0, embeddings.token_type_embeddings, token_type_ids));
   emb = ggml_cont(ctx0, ggml_reshape_2d(ctx0, emb, D, N));
-  emb = ggml_norm_inplace(ctx0, emb, gte_hparams->layer_norm_eps);
-  emb = ggml_add(ctx0, ggml_mul(ctx0, emb, embeddings.LayerNorm_w),
-                 embeddings.LayerNorm_b);
+  emb = ggml_norm_affine_inplace(ctx0, emb, embeddings.LayerNorm_w,
+                                 embeddings.LayerNorm_b,
+                                 gte_hparams->layer_norm_eps);
 
   auto *inpL = emb;
   for (int il = 0; il < n_layer; ++il) {
@@ -348,9 +359,10 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
 
     auto *proj = ggml_add(ctx0, ggml_mul_mat(ctx0, layer.o_proj_w, attn),
                           layer.o_proj_b);
-    auto *res = ggml_add(ctx0, inpL, proj);
-    res = ggml_norm_inplace(ctx0, res, gte_hparams->layer_norm_eps);
-    res = ggml_add(ctx0, ggml_mul(ctx0, res, layer.attn_ln_w), layer.attn_ln_b);
+    auto *res = ggml_add_inplace(ctx0, proj, inpL);
+    res = ggml_norm_affine_inplace(ctx0, res, layer.attn_ln_w,
+                                   layer.attn_ln_b,
+                                   gte_hparams->layer_norm_eps);
 
     const int hidden_features = gte_hparams->intermediate_size;
     struct ggml_tensor *up_gate = ggml_mul_mat(ctx0, layer.up_gate_proj_w, res);
@@ -361,15 +373,15 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
         ggml_view_2d(ctx0, up_gate, hidden_features, res->ne[1], up_gate->nb[1],
                      hidden_features * up_gate->nb[0]);
     gate = ggml_cont(ctx0, gate);
-    gate = ggml_gelu(ctx0, gate);
+    gate = ggml_gelu_inplace(ctx0, gate);
     struct ggml_tensor *gated_states = ggml_mul(ctx0, gate, up_state);
     struct ggml_tensor *ffn =
         ggml_add(ctx0, ggml_mul_mat(ctx0, layer.down_proj_w, gated_states),
                  layer.down_proj_b);
 
-    inpL = ggml_add(ctx0, res, ffn);
-    inpL = ggml_norm_inplace(ctx0, inpL, gte_hparams->layer_norm_eps);
-    inpL = ggml_add(ctx0, ggml_mul(ctx0, inpL, layer.mlp_ln_w), layer.mlp_ln_b);
+    inpL = ggml_add_inplace(ctx0, ffn, res);
+    inpL = ggml_norm_affine_inplace(ctx0, inpL, layer.mlp_ln_w, layer.mlp_ln_b,
+                                    gte_hparams->layer_norm_eps);
   }
 
   std::vector<struct ggml_tensor *> batch_pooled;
