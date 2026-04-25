@@ -104,6 +104,12 @@ Browser case runner:
 node scripts/run_browser_cases.mjs
 ```
 
+Dynamic browser bundles:
+
+```bash
+scripts/build_browser_dynamic.sh
+```
+
 ## Packaging and Caching
 
 For a productized browser path, the useful minimum is:
@@ -112,6 +118,10 @@ For a productized browser path, the useful minimum is:
    - `build-wasm-web`
    - `build-wasm-web-pthread`
    - `build-wasm-webgpu-browser`
+   - and `*-dyn` variants for dynamic model loading:
+     - `build-wasm-web-dyn`
+     - `build-wasm-web-pthread-dyn`
+     - `build-wasm-webgpu-browser-dyn`
 2. Version the model and browser bundle together.
 3. Cache `.data`, `.js`, and `.wasm` with immutable URLs.
 4. Store large artifacts in browser persistent storage:
@@ -122,15 +132,21 @@ For a productized browser path, the useful minimum is:
    - fall back to `pthread`
    - fall back to single-thread WASM
 
-The current demo still uses Emscripten preload files because it is the shortest
-path to a repeatable benchmark. A production browser loader should instead
-download the GGUF dynamically, persist it locally, and reuse it across reloads.
+The demo now supports both paths:
 
-The demo now includes a minimal cache implementation:
+- `Bundled`: benchmark-friendly preload artifacts with `.data`
+- `Downloaded`: `*-dyn` artifacts that fetch the GGUF and batch fixture at
+  runtime, write them into MEMFS, and reuse the fetched bytes from browser
+  cache on later runs
+
+The demo now includes a minimal browser cache implementation:
 
 - a service worker for browser bundle requests
 - explicit bundle prefetch into `Cache Storage`
+- explicit GGUF URL prefetch into `Cache Storage`
 - browser storage estimates in the UI
 
-This is still a bundle cache, not a final GGUF chunk cache. It is the shortest
-step from a benchmark page to an actual reusable browser deployment path.
+This is still a simple whole-file cache, not a final chunked GGUF loader backed
+by `IndexedDB` or `OPFS`. But it is already enough to validate the product path:
+serve `COOP/COEP`, pick a runtime, download the published GGUF, cache it, and
+reuse it across reloads without rebuilding the page bundle.

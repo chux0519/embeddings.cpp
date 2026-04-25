@@ -301,8 +301,10 @@ Platform for the browser numbers below:
 On this host, WebGPU stays ahead not just for a single short sentence, but also
 for mixed multilingual input and a more realistic short-query batch. The static
 demo is at [demo/browser-wasm/index.html](/home/yongsheng/repos/embeddings.cpp/demo/browser-wasm/index.html),
-and now supports service-worker-backed bundle caching for `single-thread`,
-`pthread`, and `WebGPU` artifacts. The full method plus detailed numbers are in
+and now supports both preload-based bundles and dynamic `GGUF` download mode.
+In downloaded mode, the page can fetch the published Snowflake `GGUF`, cache
+the browser runtime bundle plus model bytes in `Cache Storage`, and reuse them
+across reloads. The full method plus detailed numbers are in
 [docs/BROWSER_BENCHMARK.md](/home/yongsheng/repos/embeddings.cpp/docs/BROWSER_BENCHMARK.md).
 
 ## HTTP Server

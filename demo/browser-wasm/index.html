@@ -20,13 +20,20 @@
           </p>
         </div>
 
-        <div class="grid gap-4 rounded-md border border-stone-300 bg-white p-4 md:grid-cols-4">
+        <div class="grid gap-4 rounded-md border border-stone-300 bg-white p-4 md:grid-cols-5">
           <label class="space-y-2 text-sm text-stone-700">
             <span class="block text-xs uppercase tracking-wide text-stone-500">Scenario</span>
             <select id="scenario" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900">
               <option value="batch1">Short sentence, batch 1</option>
               <option value="batch8">Mixed batch, batch 8</option>
               <option value="short8">Short questions, batch 8</option>
+            </select>
+          </label>
+          <label class="space-y-2 text-sm text-stone-700">
+            <span class="block text-xs uppercase tracking-wide text-stone-500">Artifact Mode</span>
+            <select id="artifact-mode" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900">
+              <option value="bundled">Bundled</option>
+              <option value="downloaded">Downloaded</option>
             </select>
           </label>
           <label class="space-y-2 text-sm text-stone-700">
@@ -42,6 +49,13 @@
             <input id="iterations" type="number" min="1" max="50" value="3" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900">
           </label>
         </div>
+
+        <label class="grid gap-2 rounded-md border border-stone-300 bg-white p-4 text-sm text-stone-700">
+          <span class="block text-xs uppercase tracking-wide text-stone-500">Model URL</span>
+          <input id="model-url" type="text" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900"
+            value="https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf">
+          <span class="text-xs leading-5 text-stone-500">Used only in Downloaded mode. Bundled mode uses the preloaded local artifact.</span>
+        </label>
 
         <div class="flex flex-wrap gap-3">
           <button id="run-single" class="rounded-md bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800">
@@ -121,14 +135,17 @@
             <label class="space-y-2 text-sm text-stone-700">
               <span class="block text-xs uppercase tracking-wide text-stone-500">Bundle</span>
               <select id="cache-build" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900">
-                <option value="build-wasm-web">Single-thread WASM</option>
-                <option value="build-wasm-web-pthread">Pthreads WASM</option>
-                <option value="build-wasm-webgpu-browser">WebGPU</option>
+                <option value="single">Single-thread WASM</option>
+                <option value="pthread">Pthreads WASM</option>
+                <option value="webgpu">WebGPU</option>
               </select>
             </label>
-            <div class="flex flex-wrap gap-3">
+          <div class="flex flex-wrap gap-3">
               <button id="cache-build-btn" class="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800">
                 Cache Bundle
+              </button>
+              <button id="cache-model-btn" class="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600">
+                Cache Model URL
               </button>
               <button id="clear-cache-btn" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:border-stone-400">
                 Clear Cache
@@ -158,6 +175,8 @@
     const logEl = document.getElementById("log");
     const frame = document.getElementById("runner-frame");
     const scenarioEl = document.getElementById("scenario");
+    const artifactModeEl = document.getElementById("artifact-mode");
+    const modelUrlEl = document.getElementById("model-url");
     const threadsEl = document.getElementById("threads");
     const warmupEl = document.getElementById("warmup");
     const iterationsEl = document.getElementById("iterations");
@@ -166,6 +185,19 @@
     const storageEstimateEl = document.getElementById("storage-estimate");
     const detectedThreads = Math.max(1, Math.min(12, navigator.hardwareConcurrency || 4));
     const demoCacheName = "embeddings-browser-demo-v1";
+    const fileCacheName = "embeddings-browser-files-v1";
+    const buildConfig = {
+      bundled: {
+        single: { dir: "build-wasm-web", hasData: true },
+        pthread: { dir: "build-wasm-web-pthread", hasData: true },
+        webgpu: { dir: "build-wasm-webgpu-browser", hasData: true },
+      },
+      downloaded: {
+        single: { dir: "build-wasm-web-dyn", hasData: false },
+        pthread: { dir: "build-wasm-web-pthread-dyn", hasData: false },
+        webgpu: { dir: "build-wasm-webgpu-browser-dyn", hasData: false },
+      },
+    };
 
     let runCount = 0;
     let hasRows = false;
@@ -205,15 +237,45 @@
       return "/snowflake_wasm_batch.txt";
     }
 
-    function bundleAssets(buildDir) {
-      return [
+    function scenarioBatchSourceUrl() {
+      if (scenarioEl.value === "batch1") {
+        return "/scripts/data/snowflake_wasm_batch1.txt";
+      }
+      if (scenarioEl.value === "short8") {
+        return "/scripts/data/snowflake_wasm_short8.txt";
+      }
+      return "/scripts/data/snowflake_wasm_batch8.txt";
+    }
+
+    function resolveBuild(runtimeKey) {
+      return buildConfig[artifactModeEl.value][runtimeKey];
+    }
+
+    function bundleAssets(buildInfo) {
+      const assets = [
         "/scripts/wasm_bench_page.html",
         "/demo/browser-wasm/index.html",
         "/demo/browser-wasm/sw.js",
-        `/${buildDir}/embedding_wasm_model_bench.js`,
-        `/${buildDir}/embedding_wasm_model_bench.wasm`,
-        `/${buildDir}/embedding_wasm_model_bench.data`,
+        `/${buildInfo.dir}/embedding_wasm_model_bench.js`,
+        `/${buildInfo.dir}/embedding_wasm_model_bench.wasm`,
       ];
+      if (buildInfo.hasData) {
+        assets.push(`/${buildInfo.dir}/embedding_wasm_model_bench.data`);
+      }
+      return assets;
+    }
+
+    function fileCacheKey(kind, url) {
+      return `/__cache__/${kind}/${encodeURIComponent(url)}`;
+    }
+
+    async function fetchIntoCache(url, cacheName, cacheKey) {
+      const cache = await caches.open(cacheName);
+      const response = await fetch(url, { cache: "reload" });
+      if (!response.ok) {
+        throw new Error(`failed to fetch ${url}: ${response.status}`);
+      }
+      await cache.put(cacheKey, response.clone());
     }
 
     async function updateStorageEstimate() {
@@ -227,22 +289,35 @@
       storageEstimateEl.textContent = `Browser storage: ${usageMB} MiB used / ${quotaMB} MiB quota.`;
     }
 
-    async function cacheBundle(buildDir) {
-      cacheStatusEl.textContent = `Caching ${buildDir}...`;
+    async function cacheBundle(runtimeKey) {
+      const buildInfo = resolveBuild(runtimeKey);
+      cacheStatusEl.textContent = `Caching ${buildInfo.dir}...`;
       const cache = await caches.open(demoCacheName);
-      for (const asset of bundleAssets(buildDir)) {
+      for (const asset of bundleAssets(buildInfo)) {
         const response = await fetch(asset, { cache: "reload" });
         if (!response.ok) {
           throw new Error(`failed to cache ${asset}: ${response.status}`);
         }
         await cache.put(asset, response.clone());
       }
-      cacheStatusEl.textContent = `Cached ${buildDir}.`;
+      cacheStatusEl.textContent = `Cached ${buildInfo.dir}.`;
+      await updateStorageEstimate();
+    }
+
+    async function cacheModelUrl() {
+      const modelUrl = modelUrlEl.value.trim();
+      if (!modelUrl) {
+        throw new Error("model URL is empty");
+      }
+      cacheStatusEl.textContent = "Caching model URL...";
+      await fetchIntoCache(modelUrl, fileCacheName, fileCacheKey("model", modelUrl));
+      cacheStatusEl.textContent = "Cached model URL.";
       await updateStorageEstimate();
     }
 
     async function clearBundleCache() {
       await caches.delete(demoCacheName);
+      await caches.delete(fileCacheName);
       cacheStatusEl.textContent = "Cache cleared.";
       await updateStorageEstimate();
     }
@@ -260,18 +335,23 @@
       }
     }
 
-    function runBench(buildDir, label, options = {}) {
+    function runBench(runtimeKey, label, options = {}) {
+      const buildInfo = resolveBuild(runtimeKey);
       statusEl.textContent = "Running";
       runnerEl.textContent = label;
       meanEl.textContent = "-";
       throughputEl.textContent = "-";
       logEl.textContent = "";
       const params = new URLSearchParams({
-        build: buildDir,
+        build: buildInfo.dir,
         batch: scenarioBatchPath(),
         warmup: warmupEl.value,
         iterations: iterationsEl.value,
       });
+      if (artifactModeEl.value === "downloaded") {
+        params.set("model_url", modelUrlEl.value.trim());
+        params.set("batch_url", scenarioBatchSourceUrl());
+      }
       if (options.backend) {
         params.set("backend", options.backend);
       }
@@ -282,15 +362,15 @@
     }
 
     document.getElementById("run-single").addEventListener("click", () => {
-      runBench("build-wasm-web", "Single-thread");
+      runBench("single", "Single-thread");
     });
 
     document.getElementById("run-pthread").addEventListener("click", () => {
-      runBench("build-wasm-web-pthread", "Pthreads", { threads: true });
+      runBench("pthread", "Pthreads", { threads: true });
     });
 
     document.getElementById("run-webgpu").addEventListener("click", () => {
-      runBench("build-wasm-webgpu-browser", "WebGPU", { backend: "webgpu" });
+      runBench("webgpu", "WebGPU", { backend: "webgpu" });
     });
 
     document.getElementById("clear-results").addEventListener("click", () => {
@@ -322,6 +402,14 @@
         await clearBundleCache();
       } catch (error) {
         cacheStatusEl.textContent = `Clear failed: ${error.message}`;
+      }
+    });
+
+    document.getElementById("cache-model-btn").addEventListener("click", async () => {
+      try {
+        await cacheModelUrl();
+      } catch (error) {
+        cacheStatusEl.textContent = `Cache failed: ${error.message}`;
       }
     });
 

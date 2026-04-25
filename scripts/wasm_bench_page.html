@@ -13,7 +13,7 @@
   <div id="status">starting</div>
   <pre id="log"></pre>
   <script>
-    (function () {
+    (async function () {
       const params = new URLSearchParams(window.location.search);
       const buildDir = params.get("build") || "build-wasm-web";
       const backend = params.get("backend") || "";
@@ -21,13 +21,21 @@
       const warmup = params.get("warmup") || "1";
       const iterations = params.get("iterations") || "2";
       const threads = params.get("threads");
+      const modelPath = params.get("model_path") || "/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf";
+      const modelUrl = params.get("model_url") || "";
+      const batchUrl = params.get("batch_url") || "";
       const status = document.getElementById('status');
       const log = document.getElementById('log');
+      const fileCacheName = "embeddings-browser-files-v1";
       let jsonBuffer = [];
       let collecting = false;
 
       function append(line) {
         log.textContent += line + "\n";
+      }
+
+      function fileCacheKey(kind, url) {
+        return `/__cache__/${kind}/${encodeURIComponent(url)}`;
       }
 
       function tryFinish(line) {
@@ -65,13 +73,84 @@
         }
       }
 
+      async function fetchCachedBytes(url, cacheKey) {
+        const cache = await caches.open(fileCacheName);
+        const cached = await cache.match(cacheKey);
+        if (cached) {
+          append(`[cache-hit] ${cacheKey}`);
+          return new Uint8Array(await cached.arrayBuffer());
+        }
+
+        append(`[fetch] ${url}`);
+        const response = await fetch(url, { cache: "reload" });
+        if (!response.ok) {
+          throw new Error(`failed to fetch ${url}: ${response.status}`);
+        }
+        await cache.put(cacheKey, response.clone());
+        return new Uint8Array(await response.arrayBuffer());
+      }
+
+      function ensureDir(path) {
+        const parts = path.split("/").filter(Boolean);
+        let current = "";
+        for (const part of parts) {
+          current += "/" + part;
+          try {
+            FS.mkdir(current);
+          } catch (err) {
+            if (!String(err).includes("File exists")) {
+              throw err;
+            }
+          }
+        }
+      }
+
+      async function prepareDynamicFiles() {
+        const files = [];
+        if (modelUrl) {
+          files.push({
+            url: modelUrl,
+            cacheKey: fileCacheKey("model", modelUrl),
+            path: modelPath,
+          });
+        }
+        if (batchUrl) {
+          files.push({
+            url: batchUrl,
+            cacheKey: fileCacheKey("batch", batchUrl),
+            path: batchPath,
+          });
+        }
+        if (!files.length) {
+          return [];
+        }
+
+        const prepared = [];
+        for (const file of files) {
+          const bytes = await fetchCachedBytes(file.url, file.cacheKey);
+          prepared.push({ path: file.path, bytes });
+        }
+        return prepared;
+      }
+
+      const preparedFiles = await prepareDynamicFiles();
+
       window.Module = {
         arguments: [
-          "--model", "/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf",
+          "--model", modelPath,
           "--batch", batchPath,
           "--warmup", warmup,
           "--iterations", iterations
         ],
+        preRun: [function () {
+          for (const file of preparedFiles) {
+            const slash = file.path.lastIndexOf("/");
+            if (slash > 0) {
+              ensureDir(file.path.slice(0, slash));
+            }
+            FS.writeFile(file.path, file.bytes);
+          }
+        }],
         locateFile: function (path) {
           return "/" + buildDir + "/" + path;
         },
@@ -116,7 +195,20 @@
         }
       };
       document.body.appendChild(script);
-    })();
+    })().catch((err) => {
+      const status = document.getElementById('status');
+      const log = document.getElementById('log');
+      const message = String(err && err.message ? err.message : err);
+      status.textContent = "prepare-error";
+      log.textContent += `[prepare-error] ${message}\n`;
+      window.__benchError = message;
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(
+          { type: "bench-result", result: null, error: message },
+          "*"
+        );
+      }
+    });
   </script>
 </body>
 </html>
