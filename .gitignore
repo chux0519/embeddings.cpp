@@ -31,5 +31,5 @@ htmlcov/
 
 # Keep the browser npm package build output in-repo because the static demo
 # imports it directly.
-!packages/snowflake-web/dist/
-!packages/snowflake-web/dist/**
+!packages/web/dist/
+!packages/web/dist/**

@@ -144,6 +144,10 @@ Version 1 can assume these defaults:
 - model on Hugging Face
 - runtime assets on GitHub Pages or a CDN
 
+Current repo layout:
+
+- package source: `packages/web/`
+
 ## Default Behavior
 
 `createSnowflakeEmbedder()` should behave like this:
