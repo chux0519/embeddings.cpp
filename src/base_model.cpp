@@ -11,6 +11,9 @@
 #ifdef GGML_USE_VULKAN
 #include "ggml-vulkan.h"
 #endif
+#ifdef GGML_USE_WEBGPU
+#include "ggml-webgpu.h"
+#endif
 
 #include <fstream>
 #include <algorithm>
@@ -74,6 +77,10 @@ bool should_use_blas(int model_ftype) {
   }
   (void)model_ftype;
   return false;
+}
+
+const char *requested_backend() {
+  return std::getenv("EMBEDDINGS_CPP_BACKEND");
 }
 
 using Clock = std::chrono::steady_clock;
@@ -276,19 +283,35 @@ void BaseModel::Clear() {
 }
 
 void BaseModel::InitializeBackend() {
+  const char *backend_name = requested_backend();
+
+#ifdef GGML_USE_WEBGPU
+  if (!ctx.backend && backend_name && std::strcmp(backend_name, "webgpu") == 0) {
+    fprintf(stderr, "%s: trying WebGPU backend\n", __func__);
+    ctx.backend = ggml_backend_webgpu_init();
+    if (!ctx.backend) {
+      fprintf(stderr, "%s: ggml_backend_webgpu_init() failed\n", __func__);
+    }
+  }
+#endif
+
   // initialize the backend
 #ifdef GGML_USE_METAL
-  fprintf(stderr, "%s: using Metal backend\n", __func__);
-  ctx.backend = ggml_backend_metal_init();
-  if (!ctx.backend) {
-    fprintf(stderr, "%s: ggml_backend_metal_init() failed\n", __func__);
+  if (!ctx.backend && (!backend_name || std::strcmp(backend_name, "metal") == 0)) {
+    fprintf(stderr, "%s: using Metal backend\n", __func__);
+    ctx.backend = ggml_backend_metal_init();
+    if (!ctx.backend) {
+      fprintf(stderr, "%s: ggml_backend_metal_init() failed\n", __func__);
+    }
   }
 #endif
 #ifdef GGML_USE_VULKAN
-  fprintf(stderr, "%s: using Vulkan backend\n", __func__);
-  ctx.backend = ggml_backend_vk_init(0);
-  if (!ctx.backend) {
-    fprintf(stderr, "%s: ggml_backend_vulkan_init() failed\n", __func__);
+  if (!ctx.backend && (!backend_name || std::strcmp(backend_name, "vulkan") == 0)) {
+    fprintf(stderr, "%s: using Vulkan backend\n", __func__);
+    ctx.backend = ggml_backend_vk_init(0);
+    if (!ctx.backend) {
+      fprintf(stderr, "%s: ggml_backend_vulkan_init() failed\n", __func__);
+    }
   }
 #endif
 

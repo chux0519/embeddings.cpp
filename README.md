@@ -274,6 +274,36 @@ Install the optional Hugging Face dependency when downloading from the Hub:
 pip install "embeddings-cpp[hub]"
 ```
 
+## Browser Runtime
+
+The Snowflake production artifact also runs in Chromium through browser WASM and
+WebGPU. On an Apple M4 Mac mini with Chrome, browser-side `WebGPU` is clearly
+better than browser-side WASM for this model.
+
+Platform for the browser numbers below:
+
+- Host: Mac mini `Mac16,10`
+- CPU: `Apple M4`
+- Memory: `16 GiB`
+- OS: `macOS 26.3.1`
+- Browser: `Google Chrome`
+- Model: `models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`
+- Scope: browser `engine-only` forward, tokenizer excluded
+
+| Scenario | WASM single-thread ms | WASM pthread x8 ms | WebGPU ms | WebGPU speedup vs pthread |
+|---|---:|---:|---:|---:|
+| `batch=1`, short sentence | 165.24 | 56.24 | 35.20 | 1.60x |
+| `batch=8`, mixed multilingual batch | 1298.39 | 342.91 | 51.31 | 6.68x |
+| `batch=8`, short question set | 1458.59 | 390.97 | 50.85 | 7.69x |
+
+![Browser benchmark on Apple M4 Chrome](docs/browser-benchmark-m4.svg)
+
+On this host, WebGPU stays ahead not just for a single short sentence, but also
+for mixed multilingual input and a more realistic short-query batch. The static
+demo is at [demo/browser-wasm/index.html](/home/yongsheng/repos/embeddings.cpp/demo/browser-wasm/index.html),
+and the full method plus detailed numbers are in
+[docs/BROWSER_BENCHMARK.md](/home/yongsheng/repos/embeddings.cpp/docs/BROWSER_BENCHMARK.md).
+
 ## HTTP Server
 
 The server can load a registered model from Hugging Face or a local GGUF path.

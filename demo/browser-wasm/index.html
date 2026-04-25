@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snowflake Browser WASM Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-stone-100 text-stone-900">
+  <main class="mx-auto max-w-6xl px-6 py-8">
+    <section class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+      <div class="space-y-5">
+        <div class="space-y-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Snowflake Browser WASM</p>
+          <h1 class="text-4xl font-semibold leading-tight text-stone-950">Run the quantized Snowflake model in Chromium.</h1>
+          <p class="max-w-3xl text-sm leading-6 text-stone-700">
+            This page benchmarks the packaged <code>q4_k_mlp_q8_attn</code> artifact in Chromium with
+            the same token batch across single-thread WASM, pthread WASM, and WebGPU when the browser
+            exposes a compatible adapter.
+          </p>
+        </div>
+
+        <div class="grid gap-4 rounded-md border border-stone-300 bg-white p-4 md:grid-cols-4">
+          <label class="space-y-2 text-sm text-stone-700">
+            <span class="block text-xs uppercase tracking-wide text-stone-500">Scenario</span>
+            <select id="scenario" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900">
+              <option value="batch1">Short sentence, batch 1</option>
+              <option value="batch8">Mixed batch, batch 8</option>
+              <option value="short8">Short questions, batch 8</option>
+            </select>
+          </label>
+          <label class="space-y-2 text-sm text-stone-700">
+            <span class="block text-xs uppercase tracking-wide text-stone-500">Threads</span>
+            <input id="threads" type="number" min="1" max="12" value="12" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900">
+          </label>
+          <label class="space-y-2 text-sm text-stone-700">
+            <span class="block text-xs uppercase tracking-wide text-stone-500">Warmup</span>
+            <input id="warmup" type="number" min="0" max="20" value="1" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900">
+          </label>
+          <label class="space-y-2 text-sm text-stone-700">
+            <span class="block text-xs uppercase tracking-wide text-stone-500">Iterations</span>
+            <input id="iterations" type="number" min="1" max="50" value="3" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900">
+          </label>
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+          <button id="run-single" class="rounded-md bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800">
+            Run Single-Thread
+          </button>
+          <button id="run-pthread" class="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600">
+            Run Pthreads
+          </button>
+          <button id="run-webgpu" class="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600">
+            Run WebGPU
+          </button>
+          <button id="clear-results" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:border-stone-400">
+            Clear
+          </button>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="rounded-md border border-stone-300 bg-white p-4">
+            <p class="text-xs uppercase tracking-wide text-stone-500">Status</p>
+            <p id="status" class="mt-2 text-lg font-semibold text-stone-950">Idle</p>
+          </div>
+          <div class="rounded-md border border-stone-300 bg-white p-4">
+            <p class="text-xs uppercase tracking-wide text-stone-500">Runner</p>
+            <p id="runner" class="mt-2 text-lg font-semibold text-stone-950">None</p>
+          </div>
+          <div class="rounded-md border border-stone-300 bg-white p-4">
+            <p class="text-xs uppercase tracking-wide text-stone-500">Mean</p>
+            <p id="mean" class="mt-2 text-lg font-semibold text-stone-950">-</p>
+          </div>
+          <div class="rounded-md border border-stone-300 bg-white p-4">
+            <p class="text-xs uppercase tracking-wide text-stone-500">Items / sec</p>
+            <p id="throughput" class="mt-2 text-lg font-semibold text-stone-950">-</p>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto rounded-md border border-stone-300 bg-white">
+          <table class="min-w-full divide-y divide-stone-200 text-sm">
+            <thead class="bg-stone-50">
+              <tr class="text-left text-stone-600">
+                <th class="px-4 py-3 font-medium">Run</th>
+                <th class="px-4 py-3 font-medium">Mean ms</th>
+                <th class="px-4 py-3 font-medium">P50 ms</th>
+                <th class="px-4 py-3 font-medium">P95 ms</th>
+                <th class="px-4 py-3 font-medium">Items / sec</th>
+              </tr>
+            </thead>
+            <tbody id="results-body" class="divide-y divide-stone-200 bg-white">
+              <tr>
+                <td colspan="5" class="px-4 py-6 text-center text-stone-500">No runs yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div class="rounded-md border border-stone-300 bg-white p-4">
+          <p class="text-xs uppercase tracking-wide text-stone-500">Scenario</p>
+          <p class="mt-2 text-sm leading-6 text-stone-700">
+            The presets cover one short sentence, the original mixed multilingual batch, and an 8-item short-question set.
+          </p>
+        </div>
+
+        <div class="rounded-md border border-stone-300 bg-white p-4">
+          <p class="text-xs uppercase tracking-wide text-stone-500">Notes</p>
+          <ul class="mt-2 space-y-2 text-sm leading-6 text-stone-700">
+            <li>Single-thread matches the fallback runtime.</li>
+            <li>Pthreads requires browser cross-origin isolation.</li>
+            <li>WebGPU needs a browser adapter with the features required by <code>ggml-webgpu</code>.</li>
+            <li>This benchmark measures model forward only.</li>
+          </ul>
+        </div>
+
+        <div class="rounded-md border border-stone-300 bg-white p-4">
+          <p class="text-xs uppercase tracking-wide text-stone-500">Log</p>
+          <pre id="log" class="mt-2 max-h-[28rem] overflow-auto text-xs leading-5 text-stone-700"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <iframe id="runner-frame" class="hidden" title="wasm-runner"></iframe>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const runnerEl = document.getElementById("runner");
+    const meanEl = document.getElementById("mean");
+    const throughputEl = document.getElementById("throughput");
+    const resultsBody = document.getElementById("results-body");
+    const logEl = document.getElementById("log");
+    const frame = document.getElementById("runner-frame");
+    const scenarioEl = document.getElementById("scenario");
+    const threadsEl = document.getElementById("threads");
+    const warmupEl = document.getElementById("warmup");
+    const iterationsEl = document.getElementById("iterations");
+    const detectedThreads = Math.max(1, Math.min(12, navigator.hardwareConcurrency || 4));
+
+    let runCount = 0;
+    let hasRows = false;
+
+    threadsEl.value = String(detectedThreads);
+
+    function setSummary(label, result) {
+      runnerEl.textContent = label;
+      meanEl.textContent = result ? `${result.mean_ms.toFixed(2)} ms` : "-";
+      throughputEl.textContent = result ? result.items_per_sec.toFixed(2) : "-";
+    }
+
+    function appendRow(label, result) {
+      if (!hasRows) {
+        resultsBody.innerHTML = "";
+        hasRows = true;
+      }
+      runCount += 1;
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td class="px-4 py-3 font-medium text-stone-900">${runCount}. ${label}</td>
+        <td class="px-4 py-3 text-stone-700">${result.mean_ms.toFixed(2)}</td>
+        <td class="px-4 py-3 text-stone-700">${result.p50_ms.toFixed(2)}</td>
+        <td class="px-4 py-3 text-stone-700">${result.p95_ms.toFixed(2)}</td>
+        <td class="px-4 py-3 text-stone-700">${result.items_per_sec.toFixed(2)}</td>
+      `;
+      resultsBody.prepend(row);
+    }
+
+    function scenarioBatchPath() {
+      if (scenarioEl.value === "batch1") {
+        return "/snowflake_wasm_batch1.txt";
+      }
+      if (scenarioEl.value === "short8") {
+        return "/snowflake_wasm_short8.txt";
+      }
+      return "/snowflake_wasm_batch.txt";
+    }
+
+    function runBench(buildDir, label, options = {}) {
+      statusEl.textContent = "Running";
+      runnerEl.textContent = label;
+      meanEl.textContent = "-";
+      throughputEl.textContent = "-";
+      logEl.textContent = "";
+      const params = new URLSearchParams({
+        build: buildDir,
+        batch: scenarioBatchPath(),
+        warmup: warmupEl.value,
+        iterations: iterationsEl.value,
+      });
+      if (options.backend) {
+        params.set("backend", options.backend);
+      }
+      if (options.threads) {
+        params.set("threads", threadsEl.value);
+      }
+      frame.src = `/scripts/wasm_bench_page.html?${params.toString()}`;
+    }
+
+    document.getElementById("run-single").addEventListener("click", () => {
+      runBench("build-wasm-web", "Single-thread");
+    });
+
+    document.getElementById("run-pthread").addEventListener("click", () => {
+      runBench("build-wasm-web-pthread", "Pthreads", { threads: true });
+    });
+
+    document.getElementById("run-webgpu").addEventListener("click", () => {
+      runBench("build-wasm-webgpu-browser", "WebGPU", { backend: "webgpu" });
+    });
+
+    document.getElementById("clear-results").addEventListener("click", () => {
+      statusEl.textContent = "Idle";
+      runnerEl.textContent = "None";
+      meanEl.textContent = "-";
+      throughputEl.textContent = "-";
+      logEl.textContent = "";
+      runCount = 0;
+      hasRows = false;
+      resultsBody.innerHTML = `
+        <tr>
+          <td colspan="5" class="px-4 py-6 text-center text-stone-500">No runs yet.</td>
+        </tr>
+      `;
+      frame.removeAttribute("src");
+    });
+
+    window.addEventListener("message", (event) => {
+      const data = event.data || {};
+      if (data.type !== "bench-result") {
+        return;
+      }
+      if (data.error || !data.result || typeof data.result.mean_ms !== "number") {
+        statusEl.textContent = "Failed";
+        logEl.textContent = String(data.error || "runner exited without a benchmark result");
+        return;
+      }
+      statusEl.textContent = "Done";
+      setSummary(runnerEl.textContent, data.result);
+      appendRow(runnerEl.textContent, data.result);
+      try {
+        logEl.textContent = JSON.stringify(data.result, null, 2);
+      } catch {
+        logEl.textContent = String(data.result);
+      }
+    });
+  </script>
+</body>
+</html>

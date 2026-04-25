@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
+<rect width="100%" height="100%" fill="#f5f5f4"/>
+<text x="90" y="36" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#1c1917">Snowflake Browser Benchmark on Apple M4 Chrome</text>
+<text x="90" y="58" font-family="Arial, sans-serif" font-size="14" fill="#57534e">Lower is better. Browser engine-only forward, q4_k_mlp_q8_attn, warmup=1, iterations=3.</text>
+<line x1="90" y1="640.0" x2="1160" y2="640.0" stroke="#d6d3d1" stroke-width="1"/>
+<text x="78" y="645.0" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#78716c">0 ms</text>
+<line x1="90" y1="495.0" x2="1160" y2="495.0" stroke="#d6d3d1" stroke-width="1"/>
+<text x="78" y="500.0" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#78716c">91 ms</text>
+<line x1="90" y1="350.0" x2="1160" y2="350.0" stroke="#d6d3d1" stroke-width="1"/>
+<text x="78" y="355.0" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#78716c">365 ms</text>
+<line x1="90" y1="205.0" x2="1160" y2="205.0" stroke="#d6d3d1" stroke-width="1"/>
+<text x="78" y="210.0" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#78716c">820 ms</text>
+<line x1="90" y1="60.0" x2="1160" y2="60.0" stroke="#d6d3d1" stroke-width="1"/>
+<text x="78" y="65.0" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#78716c">1459 ms</text>
+<text x="268.3" y="696" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="600" fill="#292524">Batch 1 Short Sentence</text>
+<rect x="147.1" y="444.8" width="64.2" height="195.2" rx="4" fill="#44403c"/>
+<text x="179.2" y="436.8" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#292524">165.24</text>
+<rect x="240.2" y="526.1" width="64.2" height="113.9" rx="4" fill="#047857"/>
+<text x="272.3" y="518.1" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#292524">56.24</text>
+<rect x="333.2" y="549.9" width="64.2" height="90.1" rx="4" fill="#0369a1"/>
+<text x="365.3" y="541.9" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#292524">35.20</text>
+<text x="625.0" y="696" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="600" fill="#292524">Batch 8 Mixed Multilingual</text>
+<rect x="503.7" y="92.8" width="64.2" height="547.2" rx="4" fill="#44403c"/>
+<text x="535.8" y="84.8" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#292524">1298.39</text>
+<rect x="596.8" y="358.8" width="64.2" height="281.2" rx="4" fill="#047857"/>
+<text x="628.9" y="350.8" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#292524">342.91</text>
+<rect x="689.9" y="531.2" width="64.2" height="108.8" rx="4" fill="#0369a1"/>
+<text x="722.0" y="523.2" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#292524">51.31</text>
+<text x="981.7" y="696" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="600" fill="#292524">Batch 8 Short Questions</text>
+<rect x="860.4" y="60.0" width="64.2" height="580.0" rx="4" fill="#44403c"/>
+<text x="892.5" y="74.0" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#292524">1458.59</text>
+<rect x="953.5" y="339.7" width="64.2" height="300.3" rx="4" fill="#047857"/>
+<text x="985.6" y="331.7" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#292524">390.97</text>
+<rect x="1046.6" y="531.7" width="64.2" height="108.3" rx="4" fill="#0369a1"/>
+<text x="1078.7" y="523.7" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#292524">50.85</text>
+<rect x="850" y="77" width="14" height="14" rx="3" fill="#44403c"/>
+<text x="874" y="88" font-family="Arial, sans-serif" font-size="14" fill="#292524">WASM single</text>
+<rect x="850" y="101" width="14" height="14" rx="3" fill="#047857"/>
+<text x="874" y="112" font-family="Arial, sans-serif" font-size="14" fill="#292524">WASM pthread x8</text>
+<rect x="850" y="125" width="14" height="14" rx="3" fill="#0369a1"/>
+<text x="874" y="136" font-family="Arial, sans-serif" font-size="14" fill="#292524">WebGPU</text>
+</svg>

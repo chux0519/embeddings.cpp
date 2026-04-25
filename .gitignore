@@ -1,6 +1,8 @@
 *.egg-info
 __init__.pyi
 build
+build-wasm
+build-wasm-*
 .cache
 .venv
 *.gguf
@@ -8,6 +10,7 @@ compile_commands.json
 .vs
 CMakeSettings.json
 .vscode
+node_modules/
 
 # Python / native build artifacts
 __pycache__/

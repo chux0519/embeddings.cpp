@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>embeddings.cpp wasm bench</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    pre { white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <h1>embeddings.cpp wasm bench</h1>
+  <div id="status">starting</div>
+  <pre id="log"></pre>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const buildDir = params.get("build") || "build-wasm-web";
+      const backend = params.get("backend") || "";
+      const batchPath = params.get("batch") || "/snowflake_wasm_batch.txt";
+      const warmup = params.get("warmup") || "1";
+      const iterations = params.get("iterations") || "2";
+      const threads = params.get("threads");
+      const status = document.getElementById('status');
+      const log = document.getElementById('log');
+      let jsonBuffer = [];
+      let collecting = false;
+
+      function append(line) {
+        log.textContent += line + "\n";
+      }
+
+      function tryFinish(line) {
+        const trimmed = String(line).trim();
+        if (trimmed === "{") {
+          collecting = true;
+          jsonBuffer = ["{"];
+          return;
+        }
+        if (collecting) {
+          jsonBuffer.push(String(line));
+          if (trimmed === "}") {
+            collecting = false;
+            const text = jsonBuffer.join("\n");
+            try {
+              window.__benchResult = JSON.parse(text);
+              status.textContent = "done";
+              if (window.parent && window.parent !== window) {
+                window.parent.postMessage(
+                  { type: "bench-result", result: window.__benchResult, error: null },
+                  "*"
+                );
+              }
+            } catch (err) {
+              window.__benchError = "failed to parse result: " + err.message;
+              status.textContent = "parse-error";
+              if (window.parent && window.parent !== window) {
+                window.parent.postMessage(
+                  { type: "bench-result", result: null, error: window.__benchError },
+                  "*"
+                );
+              }
+            }
+          }
+        }
+      }
+
+      window.Module = {
+        arguments: [
+          "--model", "/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf",
+          "--batch", batchPath,
+          "--warmup", warmup,
+          "--iterations", iterations
+        ],
+        locateFile: function (path) {
+          return "/" + buildDir + "/" + path;
+        },
+        print: function (text) {
+          append(text);
+          tryFinish(text);
+        },
+        printErr: function (text) {
+          append("[stderr] " + text);
+        },
+        setStatus: function (text) {
+          status.textContent = text;
+        },
+        onAbort: function (reason) {
+          window.__benchError = String(reason);
+          status.textContent = "abort";
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(
+              { type: "bench-result", result: null, error: window.__benchError },
+              "*"
+            );
+          }
+        }
+      };
+      if (threads) {
+        window.Module.arguments.push("--threads", threads);
+      }
+      if (backend) {
+        window.Module.arguments.push("--backend", backend);
+      }
+
+      const script = document.createElement("script");
+      script.src = "/" + buildDir + "/embedding_wasm_model_bench.js";
+      script.onerror = function () {
+        window.__benchError = "failed to load bench script";
+        status.textContent = "load-error";
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage(
+            { type: "bench-result", result: null, error: window.__benchError },
+            "*"
+          );
+        }
+      };
+      document.body.appendChild(script);
+    })();
+  </script>
+</body>
+</html>

@@ -38,15 +38,19 @@ add_dependencies(ggml-webgpu generate_shaders)
 
 if(EMSCRIPTEN)
     set(EMDAWNWEBGPU_DIR "" CACHE PATH "Path to emdawnwebgpu_pkg")
+    set(EMDAWNWEBGPU_PORT "${EMSCRIPTEN_ROOT_PATH}/tools/ports/emdawnwebgpu.py")
 
-    if(NOT EMDAWNWEBGPU_DIR)
-        # default built-in port
-        target_compile_options(ggml-webgpu PRIVATE "--use-port=emdawnwebgpu")
-        target_link_options(ggml-webgpu INTERFACE "--use-port=emdawnwebgpu")
-    else()
+    if(EMDAWNWEBGPU_DIR)
         # custom port
         target_compile_options(ggml-webgpu PRIVATE "--use-port=${EMDAWNWEBGPU_DIR}/emdawnwebgpu.port.py")
         target_link_options(ggml-webgpu INTERFACE "--use-port=${EMDAWNWEBGPU_DIR}/emdawnwebgpu.port.py")
+    elseif(EXISTS "${EMDAWNWEBGPU_PORT}")
+        # newer Emscripten SDKs ship emdawnwebgpu as a built-in port
+        target_compile_options(ggml-webgpu PRIVATE "--use-port=emdawnwebgpu")
+        target_link_options(ggml-webgpu INTERFACE "--use-port=emdawnwebgpu")
+    else()
+        # Older Emscripten SDKs provide WebGPU in the sysroot instead of the emdawnwebgpu port.
+        target_link_libraries(ggml-webgpu PRIVATE webgpu_cpp webgpu)
     endif()
 
     if (GGML_WEBGPU_JSPI)
@@ -77,4 +81,6 @@ if (GGML_WEBGPU_GPU_PROFILE)
 endif()
 
 target_include_directories(ggml-webgpu PRIVATE ${SHADER_OUTPUT_DIR})
-target_link_libraries(ggml-webgpu PRIVATE ${DawnWebGPU_TARGET})
+if (DawnWebGPU_TARGET)
+    target_link_libraries(ggml-webgpu PRIVATE ${DawnWebGPU_TARGET})
+endif()
