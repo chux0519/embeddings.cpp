@@ -1,0 +1,105 @@
+name: Browser E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/browser-e2e.yml"
+      - "CMakeLists.txt"
+      - "src/**"
+      - "scripts/browser_e2e_compare.py"
+      - "scripts/build_browser_dynamic.sh"
+      - "scripts/wasm_encode_page.html"
+      - "demo/browser-wasm/**"
+      - "embeddings_cpp/**"
+
+permissions:
+  contents: read
+
+jobs:
+  browser-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache
+
+      - name: Install Python dependencies
+        run: |
+          uv venv
+          uv pip install --torch-backend cpu -r scripts/requirements.txt
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Download Snowflake GGUF
+        run: |
+          mkdir -p models
+          uv run python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          path = hf_hub_download(
+              repo_id="chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp",
+              filename="snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf",
+              local_dir="models",
+              local_dir_use_symlinks=False,
+          )
+          print(path)
+          PY
+
+      - name: Build native extension
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON \
+            -DGGML_CPU_REPACK=ON \
+            -DGGML_BLAS=OFF \
+            -DGGML_OPENMP=OFF \
+            -DGGML_NATIVE=OFF \
+            -DGGML_CUDA=OFF \
+            -DGGML_VULKAN=OFF \
+            -DGGML_METAL=OFF
+          cmake --build build
+          cp build/_C*.so embeddings_cpp/
+
+      - name: Install Emscripten
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git /tmp/emsdk
+          cd /tmp/emsdk
+          ./emsdk install 5.0.6
+          ./emsdk activate 5.0.6
+
+      - name: Build dynamic browser artifacts
+        run: |
+          source /tmp/emsdk/emsdk_env.sh
+          ./scripts/build_browser_dynamic.sh
+
+      - name: Run browser e2e compare
+        run: |
+          python3 scripts/browser_wasm_bench_server.py --host 127.0.0.1 --port 18081 --root "$PWD" >/tmp/browser-e2e.log 2>&1 &
+          server_pid=$!
+          trap "kill $server_pid >/dev/null 2>&1 || true" EXIT
+          sleep 2
+          python3 scripts/browser_e2e_compare.py --base-url http://127.0.0.1:18081

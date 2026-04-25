@@ -8,11 +8,16 @@ import math
 import os
 import subprocess
 import sys
+from typing import Sequence
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_MODEL = os.path.join(ROOT, "models", "snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf")
 DEFAULT_URL = "http://127.0.0.1:18081"
-DEFAULT_TEXT = "你好，世界。请把这句话编码成 embedding 向量。"
+DEFAULT_TEXTS = [
+    "你好，世界。请把这句话编码成 embedding 向量。",
+    "Please encode this sentence into an embedding vector for retrieval.",
+    "请帮我 summarize this support ticket and return an embedding.",
+]
 
 
 def run_node(js: str, env: dict[str, str], timeout: int = 120) -> str:
@@ -93,24 +98,17 @@ def cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Compare browser Snowflake embeddings against local embeddings.cpp output.")
-    parser.add_argument("--base-url", default=DEFAULT_URL)
-    parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--text", default=DEFAULT_TEXT)
-    parser.add_argument("--min-cos", type=float, default=0.995)
-    args = parser.parse_args()
-
-    ids = browser_token_ids(args.base_url, args.text)
+def compare_text(base_url: str, model_path: str, text: str) -> dict[str, object]:
+    ids = browser_token_ids(base_url, text)
     full_ids = [0, *ids, 2]
     batch_line = ",".join(map(str, full_ids)) + "\t" + ",".join(["1"] * len(full_ids))
 
-    browser_vec, backend = browser_vector(args.base_url, batch_line)
-    native_vec = native_vector(args.model, args.text)
+    browser_vec, backend = browser_vector(base_url, batch_line)
+    native_vec = native_vector(model_path, text)
 
     abs_err = [abs(x - y) for x, y in zip(browser_vec, native_vec)]
-    report = {
-        "text": args.text,
+    return {
+        "text": text,
         "browser_tokens_without_special": len(ids),
         "browser_tokens_with_special": len(full_ids),
         "dim": len(browser_vec),
@@ -121,11 +119,22 @@ def main() -> int:
         "browser_head": browser_vec[:8],
         "native_head": native_vec[:8],
     }
-    print(json.dumps(report, ensure_ascii=False, indent=2))
 
-    if report["cosine_browser_vs_native"] < args.min_cos:
-        return 1
-    return 0
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Compare browser Snowflake embeddings against local embeddings.cpp output.")
+    parser.add_argument("--base-url", default=DEFAULT_URL)
+    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--text", action="append", dest="texts", help="Repeat to add explicit browser e2e test inputs.")
+    parser.add_argument("--min-cos", type=float, default=0.995)
+    args = parser.parse_args()
+
+    texts: Sequence[str] = args.texts or DEFAULT_TEXTS
+    reports = [compare_text(args.base_url, args.model, text) for text in texts]
+    print(json.dumps(reports, ensure_ascii=False, indent=2))
+
+    failed = [r for r in reports if r["cosine_browser_vs_native"] < args.min_cos]
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

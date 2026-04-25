@@ -307,6 +307,15 @@ the browser runtime bundle plus model bytes in `Cache Storage`, and reuse them
 across reloads. The full method plus detailed numbers are in
 [docs/BROWSER_BENCHMARK.md](/home/yongsheng/repos/embeddings.cpp/docs/BROWSER_BENCHMARK.md).
 
+For browser correctness, the text-to-vector demo is checked against local
+`embeddings.cpp` output with three default cases: Chinese, English, and
+mixed-language input.
+
+```bash
+python3 scripts/browser_wasm_bench_server.py --host 127.0.0.1 --port 18081 --root "$PWD"
+python3 scripts/browser_e2e_compare.py --base-url http://127.0.0.1:18081
+```
+
 ## HTTP Server
 
 The server can load a registered model from Hugging Face or a local GGUF path.
