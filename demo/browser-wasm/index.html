@@ -339,8 +339,10 @@
     }
 
     function encodeBatchLine(ids) {
-      const mask = ids.map(() => 1);
-      return `${Array.from(ids).join(",")}\t${mask.join(",")}`;
+      // Snowflake/GTE uses [CLS] ... [SEP] for CLS pooling.
+      const fullIds = [0, ...Array.from(ids), 2];
+      const mask = fullIds.map(() => 1);
+      return `${fullIds.join(",")}\t${mask.join(",")}`;
     }
 
     async function encodeInputText() {
