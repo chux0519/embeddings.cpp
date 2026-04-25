@@ -217,7 +217,9 @@
   <iframe id="runner-frame" class="hidden" title="wasm-runner"></iframe>
   <iframe id="encode-frame" class="hidden" title="wasm-encoder"></iframe>
 
-  <script>
+  <script type="module">
+    import { createSnowflakeEmbedder } from "/packages/snowflake-web/dist/index.js";
+
     const statusEl = document.getElementById("status");
     const runnerEl = document.getElementById("runner");
     const meanEl = document.getElementById("mean");
@@ -261,6 +263,8 @@
     let runCount = 0;
     let hasRows = false;
     let snowflakeTokenizer = null;
+    let embedder = null;
+    let embedderKey = "";
     let recommendedRuntime = {
       key: "single",
       label: "Single-thread",
@@ -345,57 +349,46 @@
       return `${fullIds.join(",")}\t${mask.join(",")}`;
     }
 
+    async function getDemoEmbedder() {
+      const runtimeKey = runtimeKeyForEmbed();
+      const nextKey = JSON.stringify({
+        runtimeKey,
+        modelUrl: modelUrlEl.value.trim(),
+        threads: runtimeKey === "pthread" ? Number(threadsEl.value) : 0,
+      });
+      if (embedder && embedderKey === nextKey) {
+        return embedder;
+      }
+      if (embedder) {
+        await embedder.dispose();
+      }
+      embedder = await createSnowflakeEmbedder({
+        modelUrl: modelUrlEl.value.trim(),
+        runtimeBaseUrl: window.location.origin,
+        runtime: runtimeKey === "single" ? "wasm" : runtimeKey,
+        threads: Number(threadsEl.value),
+        cache: true,
+      });
+      embedderKey = nextKey;
+      return embedder;
+    }
+
     async function encodeInputText() {
       const text = embedInputEl.value.trim();
       if (!text) {
         throw new Error("input text is empty");
       }
-      const tokenizer = await getSnowflakeTokenizer();
-      const ids = tokenizer.encode(text);
-      const batchLine = encodeBatchLine(ids);
-      const buildInfo = buildInfoForEmbed();
-      embedTokenCountEl.textContent = String(ids.length);
       embedRuntimeEl.textContent = embedRuntimeLabel();
       embedDimEl.textContent = "Running";
       embedPreviewEl.value = "";
       embedJsonEl.textContent = "";
       statusEl.textContent = "Encoding";
 
-      const params = new URLSearchParams({
-        build: buildInfo.dir,
-        model_url: modelUrlEl.value.trim(),
-        pooling: "cls",
-      });
-      if (runtimeKeyForEmbed() === "pthread") {
-        params.set("threads", threadsEl.value);
-      }
-      if (runtimeKeyForEmbed() === "webgpu") {
-        params.set("backend", "webgpu");
-      }
-
-      const done = new Promise((resolve, reject) => {
-        function onMessage(event) {
-          const data = event.data || {};
-          if (data.type !== "encode-result") {
-            return;
-          }
-          window.removeEventListener("message", onMessage);
-          if (data.error || !data.result || !Array.isArray(data.result.vectors)) {
-            reject(new Error(String(data.error || "encode failed")));
-            return;
-          }
-          resolve(data.result);
-        }
-        window.addEventListener("message", onMessage);
-      });
-
-      encodeFrame.src = `/scripts/wasm_encode_page.html?${params.toString()}`;
-      await new Promise((resolve) => {
-        encodeFrame.onload = () => resolve();
-      });
-      encodeFrame.contentWindow.postMessage({ type: "encode-request", batchLine }, "*");
-      const result = await done;
-      const vector = result.vectors[0] || [];
+      const currentEmbedder = await getDemoEmbedder();
+      const result = await currentEmbedder.embed(text);
+      const vector = Array.from(result.vector);
+      embedTokenCountEl.textContent = String(result.tokenCount);
+      embedRuntimeEl.textContent = result.runtime === "wasm" ? "Single-thread" : result.runtime === "pthread" ? "Pthreads" : "WebGPU";
       embedDimEl.textContent = String(vector.length);
       embedPreviewEl.value = vector.slice(0, 32).map((x) => Number(x).toFixed(6)).join(", ");
       embedJsonEl.textContent = JSON.stringify(vector, null, 2);
