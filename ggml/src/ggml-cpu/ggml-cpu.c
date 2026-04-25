@@ -217,6 +217,12 @@ static const struct ggml_type_traits_cpu type_traits_cpu[GGML_TYPE_COUNT] = {
         .vec_dot_type             = GGML_TYPE_F16,
         .nrows                    = 1,
     },
+    [GGML_TYPE_Q1_0] = {
+        .from_float               = quantize_row_q1_0,
+        .vec_dot                  = ggml_vec_dot_q1_0_q8_0,
+        .vec_dot_type             = GGML_TYPE_Q8_0,
+        .nrows                    = 1,
+    },
     [GGML_TYPE_Q4_0] = {
         .from_float               = quantize_row_q4_0,
         .vec_dot                  = ggml_vec_dot_q4_0_q8_0,
@@ -1275,6 +1281,7 @@ void ggml_compute_forward_mul_mat(
     const bool src1_cont = ggml_is_contiguous(src1);
 
     if (src1_cont) {
+        bool llamafile_all_ok = true;
         for (int64_t i13 = 0; i13 < ne13; i13++)
             for (int64_t i12 = 0; i12 < ne12; i12++)
                 if (!llamafile_sgemm(params,
@@ -1288,7 +1295,10 @@ void ggml_compute_forward_mul_mat(
                                      src0->type,
                                      src1->type,
                                      dst->type))
-                    goto UseGgmlGemm1;
+                    llamafile_all_ok = false;
+        if (!llamafile_all_ok) {
+            goto UseGgmlGemm1;
+        }
         return;
     }
 UseGgmlGemm1:;
@@ -1876,6 +1886,26 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
             {
                 ggml_compute_forward_rope_back(params, tensor);
             } break;
+        case GGML_OP_GTE_QKV_ROPE:
+            {
+                ggml_compute_forward_gte_qkv_rope(params, tensor);
+            } break;
+        case GGML_OP_GTE_CLS_POOL:
+            {
+                ggml_compute_forward_gte_cls_pool(params, tensor);
+            } break;
+        case GGML_OP_GTE_GEGLU:
+            {
+                ggml_compute_forward_gte_geglu(params, tensor);
+            } break;
+        case GGML_OP_GTE_NORM_AFFINE:
+            {
+                ggml_compute_forward_gte_norm_affine(params, tensor);
+            } break;
+        case GGML_OP_GTE_LINEAR:
+            {
+                ggml_compute_forward_gte_linear(params, tensor);
+            } break;
         case GGML_OP_CLAMP:
             {
                 ggml_compute_forward_clamp(params, tensor);
@@ -2410,6 +2440,27 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
         case GGML_OP_CROSS_ENTROPY_LOSS_BACK:
         case GGML_OP_OPT_STEP_ADAMW:
         case GGML_OP_OPT_STEP_SGD:
+            {
+                n_tasks = n_threads;
+            } break;
+        case GGML_OP_GTE_QKV_ROPE:
+            {
+                const int64_t rows = node->ne[1] * node->ne[2];
+                n_tasks = MIN(n_threads, MAX(1, (int) ((rows + 15) / 16)));
+            } break;
+        case GGML_OP_GTE_CLS_POOL:
+            {
+                n_tasks = MIN(n_threads, MAX(1, (int) node->ne[1]));
+            } break;
+        case GGML_OP_GTE_GEGLU:
+            {
+                n_tasks = MIN(n_threads, MAX(1, (int) node->ne[1]));
+            } break;
+        case GGML_OP_GTE_NORM_AFFINE:
+            {
+                n_tasks = MIN(n_threads, MAX(1, (int) ggml_nrows(node)));
+            } break;
+        case GGML_OP_GTE_LINEAR:
             {
                 n_tasks = n_threads;
             } break;

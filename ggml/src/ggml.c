@@ -53,6 +53,16 @@
 
 #define UNUSED GGML_UNUSED
 
+uint64_t ggml_graph_next_uid(void) {
+#ifdef _MSC_VER
+    static volatile long long counter = 1;
+    return (uint64_t) _InterlockedIncrement64(&counter) - 1;
+#else
+    static uint64_t counter = 1;
+    return __atomic_fetch_add(&counter, 1, __ATOMIC_RELAXED);
+#endif
+}
+
 // Needed for ggml_fp32_to_bf16_row()
 #if defined(__AVX512BF16__)
 #if defined(_MSC_VER)
@@ -651,6 +661,14 @@ static const struct ggml_type_traits type_traits[GGML_TYPE_COUNT] = {
         .to_float                 = (ggml_to_float_t) ggml_fp16_to_fp32_row,
         .from_float_ref           = (ggml_from_float_t) ggml_fp32_to_fp16_row,
     },
+    [GGML_TYPE_Q1_0] = {
+        .type_name                = "q1_0",
+        .blck_size                = QK1_0,
+        .type_size                = sizeof(block_q1_0),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_q1_0,
+        .from_float_ref           = (ggml_from_float_t) quantize_row_q1_0_ref,
+    },
     [GGML_TYPE_Q4_0] = {
         .type_name                = "q4_0",
         .blck_size                = QK4_0,
@@ -1003,6 +1021,11 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "SOFT_MAX_BACK",
     "ROPE",
     "ROPE_BACK",
+    "GTE_QKV_ROPE",
+    "GTE_CLS_POOL",
+    "GTE_GEGLU",
+    "GTE_NORM_AFFINE",
+    "GTE_LINEAR",
     "CLAMP",
     "CONV_TRANSPOSE_1D",
     "IM2COL",
@@ -1057,7 +1080,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "GLU",
 };
 
-static_assert(GGML_OP_COUNT == 96, "GGML_OP_COUNT != 96");
+static_assert(GGML_OP_COUNT == 101, "GGML_OP_COUNT != 101");
 
 static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "none",
@@ -1113,6 +1136,11 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "soft_max_back(x)",
     "rope(x)",
     "rope_back(x)",
+    "gte_qkv_rope(x)",
+    "gte_cls_pool(x)",
+    "gte_geglu(x)",
+    "gte_norm_affine(x)",
+    "gte_linear(x)",
     "clamp(x)",
     "conv_transpose_1d(x)",
     "im2col(x)",
@@ -1167,7 +1195,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "glu(x)",
 };
 
-static_assert(GGML_OP_COUNT == 96, "GGML_OP_COUNT != 96");
+static_assert(GGML_OP_COUNT == 101, "GGML_OP_COUNT != 101");
 
 static_assert(GGML_OP_POOL_COUNT == 2, "GGML_OP_POOL_COUNT != 2");
 
@@ -1384,6 +1412,7 @@ enum ggml_type ggml_ftype_to_ggml_type(enum ggml_ftype ftype) {
         case GGML_FTYPE_MOSTLY_BF16:          wtype = GGML_TYPE_BF16;  break;
         case GGML_FTYPE_MOSTLY_Q4_0:          wtype = GGML_TYPE_Q4_0;  break;
         case GGML_FTYPE_MOSTLY_Q4_1:          wtype = GGML_TYPE_Q4_1;  break;
+        case GGML_FTYPE_MOSTLY_Q1_0:          wtype = GGML_TYPE_Q1_0;  break;
         case GGML_FTYPE_MOSTLY_Q5_0:          wtype = GGML_TYPE_Q5_0;  break;
         case GGML_FTYPE_MOSTLY_Q5_1:          wtype = GGML_TYPE_Q5_1;  break;
         case GGML_FTYPE_MOSTLY_Q8_0:          wtype = GGML_TYPE_Q8_0;  break;
@@ -4350,6 +4379,136 @@ struct ggml_tensor * ggml_rope_multi_back(
     result->op = GGML_OP_ROPE_BACK;
     return result;
 }
+
+struct ggml_tensor * ggml_gte_qkv_rope(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * qkv,
+        struct ggml_tensor  * cos,
+        struct ggml_tensor  * sin,
+        int                   hidden_size,
+        int                   n_head,
+        bool                  include_v) {
+    GGML_ASSERT(qkv->type == GGML_TYPE_F32);
+    GGML_ASSERT(cos->type == GGML_TYPE_F32);
+    GGML_ASSERT(sin->type == GGML_TYPE_F32);
+    GGML_ASSERT(hidden_size > 0);
+    GGML_ASSERT(n_head > 0);
+    GGML_ASSERT(hidden_size % n_head == 0);
+    GGML_ASSERT(qkv->ne[0] == 3 * hidden_size);
+    GGML_ASSERT(cos->ne[0] == hidden_size / n_head);
+    GGML_ASSERT(sin->ne[0] == hidden_size / n_head);
+    GGML_ASSERT(cos->ne[1] == qkv->ne[1]);
+    GGML_ASSERT(sin->ne[1] == qkv->ne[1]);
+    GGML_ASSERT(ggml_is_contiguous(qkv));
+    GGML_ASSERT(ggml_is_contiguous(cos));
+    GGML_ASSERT(ggml_is_contiguous(sin));
+
+    const int64_t d_head = hidden_size / n_head;
+    struct ggml_tensor * result =
+        ggml_new_tensor_4d(ctx, GGML_TYPE_F32, d_head, qkv->ne[1], n_head,
+                           include_v ? 3 : 2);
+
+    ggml_set_op_params_i32(result, 0, hidden_size);
+    ggml_set_op_params_i32(result, 1, n_head);
+    ggml_set_op_params_i32(result, 2, include_v ? 1 : 0);
+
+    result->op     = GGML_OP_GTE_QKV_ROPE;
+    result->src[0] = qkv;
+    result->src[1] = cos;
+    result->src[2] = sin;
+
+    return result;
+}
+
+struct ggml_tensor * ggml_gte_cls_pool(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * inp,
+        struct ggml_tensor  * positions) {
+    GGML_ASSERT(inp->type == GGML_TYPE_F32);
+    GGML_ASSERT(positions->type == GGML_TYPE_I32);
+    GGML_ASSERT(ggml_is_contiguous(inp));
+    GGML_ASSERT(ggml_is_vector(positions));
+
+    struct ggml_tensor * result =
+        ggml_new_tensor_2d(ctx, GGML_TYPE_F32, inp->ne[0], positions->ne[0]);
+
+    result->op     = GGML_OP_GTE_CLS_POOL;
+    result->src[0] = inp;
+    result->src[1] = positions;
+
+    return result;
+}
+
+struct ggml_tensor * ggml_gte_geglu(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * up_gate,
+        int                   hidden_features) {
+    GGML_ASSERT(up_gate->type == GGML_TYPE_F32);
+    GGML_ASSERT(hidden_features > 0);
+    GGML_ASSERT(up_gate->ne[0] == 2 * hidden_features);
+    GGML_ASSERT(ggml_is_contiguous(up_gate));
+
+    struct ggml_tensor * result =
+        ggml_new_tensor_2d(ctx, GGML_TYPE_F32, hidden_features, up_gate->ne[1]);
+
+    ggml_set_op_params_i32(result, 0, hidden_features);
+
+    result->op     = GGML_OP_GTE_GEGLU;
+    result->src[0] = up_gate;
+
+    return result;
+}
+
+struct ggml_tensor * ggml_gte_norm_affine(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * inp,
+        struct ggml_tensor  * weight,
+        struct ggml_tensor  * bias,
+        float                 eps) {
+    GGML_ASSERT(inp->type == GGML_TYPE_F32);
+    GGML_ASSERT(weight->type == GGML_TYPE_F32);
+    GGML_ASSERT(bias->type == GGML_TYPE_F32);
+    GGML_ASSERT(weight->ne[0] == inp->ne[0]);
+    GGML_ASSERT(bias->ne[0] == inp->ne[0]);
+    GGML_ASSERT(ggml_is_contiguous(inp));
+    GGML_ASSERT(ggml_is_vector(weight));
+    GGML_ASSERT(ggml_is_vector(bias));
+
+    struct ggml_tensor * result = ggml_dup_tensor(ctx, inp);
+    ggml_set_op_params_f32(result, 0, eps);
+
+    result->op     = GGML_OP_GTE_NORM_AFFINE;
+    result->src[0] = inp;
+    result->src[1] = weight;
+    result->src[2] = bias;
+
+    return result;
+}
+
+struct ggml_tensor * ggml_gte_linear(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * weight,
+        struct ggml_tensor  * inp,
+        struct ggml_tensor  * bias) {
+    GGML_ASSERT(weight->type == GGML_TYPE_F32);
+    GGML_ASSERT(inp->type == GGML_TYPE_F32);
+    GGML_ASSERT(bias == NULL || bias->type == GGML_TYPE_F32);
+    GGML_ASSERT(weight->ne[0] == inp->ne[0]);
+    GGML_ASSERT(bias == NULL || bias->ne[0] == weight->ne[1]);
+    GGML_ASSERT(ggml_is_contiguous(weight));
+    GGML_ASSERT(ggml_is_contiguous(inp));
+    GGML_ASSERT(bias == NULL || ggml_is_vector(bias));
+
+    struct ggml_tensor * result =
+        ggml_new_tensor_2d(ctx, GGML_TYPE_F32, weight->ne[1], inp->ne[1]);
+
+    result->op     = GGML_OP_GTE_LINEAR;
+    result->src[0] = weight;
+    result->src[1] = inp;
+    result->src[2] = bias;
+
+    return result;
+}
 // ggml_clamp
 
 struct ggml_tensor * ggml_clamp(
@@ -7089,6 +7248,7 @@ struct ggml_cgraph * ggml_new_graph_custom(struct ggml_context * ctx, size_t siz
         /*.use_counts   =*/ use_counts_ptr,
         /*.hash_table   =*/ { hash_size, hash_used, hash_keys_ptr },
         /*.order        =*/ GGML_CGRAPH_EVAL_ORDER_LEFT_TO_RIGHT,
+        /*.uid          =*/ 0,
     };
 
     ggml_hash_set_reset(&cgraph->visited_hash_set);
@@ -7116,6 +7276,7 @@ struct ggml_cgraph ggml_graph_view(struct ggml_cgraph * cgraph0, int i0, int i1)
         /*.use_counts       =*/ cgraph0->use_counts,
         /*.visited_hash_set =*/ cgraph0->visited_hash_set,
         /*.order            =*/ cgraph0->order,
+        /*.uid              =*/ 0
     };
 
     return cgraph;
@@ -7652,6 +7813,7 @@ size_t ggml_quantize_chunk(
     size_t result = 0;
 
     switch (type) {
+        case GGML_TYPE_Q1_0:    result = quantize_q1_0(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
         case GGML_TYPE_Q4_0:    result = quantize_q4_0(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
         case GGML_TYPE_Q4_1:    result = quantize_q4_1(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
         case GGML_TYPE_Q5_0:    result = quantize_q5_0(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;

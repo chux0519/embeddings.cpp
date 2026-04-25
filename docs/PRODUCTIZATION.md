@@ -28,6 +28,29 @@ To add a new optimized model:
 4. Run correctness locally or in CI.
 5. Run performance benchmarks on a stable machine before publishing claims.
 
+## Vendored GGML
+
+`ggml/` is vendored source, not a submodule. Track its upstream source in
+`.vendor/ggml-upstream.json` and follow `docs/GGML_UPSTREAM.md` when importing
+updates from llama.cpp.
+
+The default maintenance strategy is upstream-first: refresh from a pinned
+llama.cpp release tag, then keep only the local embedding-specific patches that
+are still justified by correctness or measured performance.
+
+Local patches on top of upstream `ggml/` are tracked in
+`docs/GGML_OVERLAY_PATCHES.md`.
+
+Before changing or refreshing `ggml/`, check the recorded provenance:
+
+```bash
+uv run scripts/ggml_upstream.py status
+```
+
+Every upstream refresh should record the exact llama.cpp tag or commit and
+explain which local embedding-specific patches were preserved, replaced, or
+dropped.
+
 ## Publishing GGUF Artifacts
 
 `.github/workflows/upload-gguf-to-hf.yml` is manually triggered. It:

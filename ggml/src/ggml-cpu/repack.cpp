@@ -15,7 +15,6 @@
 #include <cstring>
 #include <cassert>
 #include <cstdio>  // for GGML_ASSERT
-#include <cstdlib>
 
 #include "repack.h"
 

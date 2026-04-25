@@ -1,0 +1,28 @@
+{
+  "name": "ggml",
+  "vendored_path": "ggml",
+  "upstream": {
+    "repository": "https://github.com/ggml-org/llama.cpp",
+    "subdirectory": "ggml"
+  },
+  "current": {
+    "ref": "b8833",
+    "commit": "45cac7ca703fb9085eae62b9121fca01d20177f6",
+    "imported_in": "f5bb1543e899bacc11b90330632adfdf6cffd811",
+    "date": "2026-04-25",
+    "notes": "Exact upstream ref recorded."
+  },
+  "latest_checked": {
+    "date": "2026-04-24",
+    "ref": "b8833",
+    "commit": "45cac7c",
+    "source": "https://github.com/ggml-org/llama.cpp/releases"
+  },
+  "local_policy": {
+    "strategy": "upstream_first_overlay_patches",
+    "preferred_source": "llama.cpp release tag",
+    "keep_local_embedding_ops": true,
+    "require_correctness_before_commit": true,
+    "require_snowflake_benchmark_before_release_claims": true
+  }
+}

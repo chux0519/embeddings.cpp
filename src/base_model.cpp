@@ -2,6 +2,9 @@
 
 #include "ggml-cpu.h"
 #include "ggml.h"
+#ifdef GGML_USE_BLAS
+#include "ggml-blas.h"
+#endif
 #ifdef GGML_USE_METAL
 #include "ggml-metal.h"
 #endif
@@ -35,6 +38,20 @@ int get_num_threads() {
   return max_threads;
 }
 
+int get_blas_num_threads(int cpu_threads) {
+  const char *env = std::getenv("EMBEDDINGS_CPP_BLAS_THREADS");
+  if (env) {
+    int value = std::atoi(env);
+    if (value > 0) {
+      return std::min(value, cpu_threads);
+    }
+  }
+
+  // Snowflake fp32 uses many medium-sized GEMMs; OpenBLAS scales well up to a
+  // point and then loses time in thread coordination.
+  return std::min(cpu_threads, 6);
+}
+
 bool should_log_compute_buffer() {
   const char *env = std::getenv("EMBEDDINGS_CPP_LOG_COMPUTE_BUFFER");
   return env && std::atoi(env) != 0;
@@ -45,12 +62,18 @@ bool should_profile() {
   return env && std::atoi(env) != 0;
 }
 
-bool should_use_cpu_repack() {
-  const char *env = std::getenv("EMBEDDINGS_CPP_CPU_REPACK");
-  if (!env) {
-    return true;
+bool should_print_graph() {
+  const char *env = std::getenv("EMBEDDINGS_CPP_GRAPH_PRINT");
+  return env && std::atoi(env) != 0;
+}
+
+bool should_use_blas(int model_ftype) {
+  const char *env = std::getenv("EMBEDDINGS_CPP_BLAS");
+  if (env) {
+    return std::atoi(env) != 0;
   }
-  return std::atoi(env) != 0;
+  (void)model_ftype;
+  return false;
 }
 
 using Clock = std::chrono::steady_clock;
@@ -69,9 +92,17 @@ BaseModel::~BaseModel() {
     ggml_gallocr_free(ctx.compute_allocr);
     ctx.compute_allocr = NULL;
   }
+  if (ctx.compute_sched) {
+    ggml_backend_sched_free(ctx.compute_sched);
+    ctx.compute_sched = NULL;
+  }
   if (ctx.weights_buffer) {
     ggml_backend_buffer_free(ctx.weights_buffer);
     ctx.weights_buffer = NULL;
+  }
+  if (ctx.blas_backend) {
+    ggml_backend_free(ctx.blas_backend);
+    ctx.blas_backend = NULL;
   }
   if (ctx.ctx_data) {
     ggml_free(ctx.ctx_data);
@@ -130,11 +161,12 @@ void BaseModel::LoadModelImpl(const std::string &gguf_model) {
   // 1. Read general metadata
   fprintf(stderr, "\n%s: GGUF meta-data\n", __func__);
   arch = get_str(ctx_gguf, KEY_ARCHITECTURE);
+  model_ftype = get_u32(ctx_gguf, KEY_FTYPE);
   fprintf(stderr, "%s: model name:   %s\n", __func__,
           get_str(ctx_gguf, KEY_NAME).c_str());
   fprintf(stderr, "%s: architecture: %s\n", __func__, arch.c_str());
-  fprintf(stderr, "%s: ftype:        %s\n", __func__,
-          get_ftype(get_u32(ctx_gguf, KEY_FTYPE)).c_str());
+  fprintf(stderr, "%s: ftype:        %s (%d)\n", __func__,
+          get_ftype(model_ftype).c_str(), model_ftype);
   fprintf(stderr, "%s: desc: %s\n", __func__,
           get_str(ctx_gguf, KEY_DESCRIPTION).c_str());
 
@@ -147,14 +179,6 @@ void BaseModel::LoadModelImpl(const std::string &gguf_model) {
   // 4. General tensor loading process
   {
     const int n_tensors = gguf_get_n_tensors(ctx_gguf);
-    size_t buffer_size = 0;
-    for (int i = 0; i < n_tensors; ++i) {
-      buffer_size += ggml_nbytes(
-          ggml_get_tensor(ctx_ggml, gguf_get_tensor_name(ctx_gguf, i)));
-    }
-    fprintf(stderr, "%s: model size = %.2f MB / num tensors = %d\n", __func__,
-            buffer_size / (1024.0 * 1024.0), n_tensors);
-
     struct ggml_init_params params = {(n_tensors + 1) * ggml_tensor_overhead(),
                                       NULL, true};
     ctx.ctx_data = ggml_init(params);
@@ -171,13 +195,27 @@ void BaseModel::LoadModelImpl(const std::string &gguf_model) {
     }
 
     // Allocate and read weights
+    const char *cpu_repack_env = std::getenv("EMBEDDINGS_CPP_CPU_REPACK");
+    const bool use_cpu_repack =
+        (cpu_repack_env ? std::atoi(cpu_repack_env) != 0 : model_ftype != 0) &&
+        !ctx.blas_backend && ggml_backend_is_cpu(ctx.backend);
     ggml_backend_buffer_type_t weight_buft =
-        should_use_cpu_repack() && ggml_backend_is_cpu(ctx.backend)
+        use_cpu_repack
             ? ggml_backend_cpu_repack_buffer_type()
-            : ggml_backend_get_default_buffer_type(ctx.backend);
+            : (ggml_backend_is_cpu(ctx.backend)
+                   ? ggml_backend_cpu_buffer_type()
+                   : ggml_backend_get_default_buffer_type(ctx.backend));
+    size_t buffer_size = 0;
+    for (int i = 0; i < n_tensors; ++i) {
+      struct ggml_tensor *cur =
+          ggml_get_tensor(ctx.ctx_data, gguf_get_tensor_name(ctx_gguf, i));
+      buffer_size += ggml_backend_buft_get_alloc_size(weight_buft, cur);
+    }
+    fprintf(stderr, "%s: model size = %.2f MB / num tensors = %d\n", __func__,
+            buffer_size / (1024.0 * 1024.0), n_tensors);
     ctx.weights_buffer = ggml_backend_buft_alloc_buffer(weight_buft, buffer_size);
-    fprintf(stderr, "%s: weights buffer: %s\n", __func__,
-            ggml_backend_buft_name(weight_buft));
+    fprintf(stderr, "%s: weights buffer: %s (repack=%d)\n", __func__,
+            ggml_backend_buft_name(weight_buft), use_cpu_repack ? 1 : 0);
     auto alloc = ggml_tallocr_new(ctx.weights_buffer);
     std::ifstream fin(gguf_model, std::ios::binary);
     std::vector<uint8_t> read_buf;
@@ -215,6 +253,10 @@ void BaseModel::LoadModelImpl(const std::string &gguf_model) {
 }
 
 void BaseModel::Clear() {
+  if (ctx.compute_sched) {
+    ggml_backend_sched_free(ctx.compute_sched);
+    ctx.compute_sched = NULL;
+  }
   if (ctx.compute_graph_ctx) {
     ggml_free(ctx.compute_graph_ctx);
     ctx.compute_graph_ctx = NULL;
@@ -255,6 +297,18 @@ void BaseModel::InitializeBackend() {
     fprintf(stderr, "%s: using CPU backend\n", __func__);
     ctx.backend = ggml_backend_cpu_init();
   }
+
+#ifdef GGML_USE_BLAS
+  if (ctx.backend && ggml_backend_is_cpu(ctx.backend) &&
+      should_use_blas(model_ftype)) {
+    ctx.blas_backend = ggml_backend_blas_init();
+    if (ctx.blas_backend) {
+      fprintf(stderr, "%s: using BLAS backend for supported ops\n", __func__);
+    } else {
+      fprintf(stderr, "%s: ggml_backend_blas_init() failed\n", __func__);
+    }
+  }
+#endif
 }
 
 struct ggml_cgraph *BaseModel::CommonBatchForwardSetup(
@@ -268,30 +322,60 @@ struct ggml_cgraph *BaseModel::CommonBatchForwardSetup(
   const auto t1 = Clock::now();
 
   // alloc graph
-  ctx.compute_allocr =
-      ggml_gallocr_new(ggml_backend_get_default_buffer_type(ctx.backend));
-  ggml_gallocr_alloc_graph(ctx.compute_allocr, graph);
+  if (!ctx.blas_backend) {
+    ctx.compute_allocr =
+        ggml_gallocr_new(ggml_backend_get_default_buffer_type(ctx.backend));
+    ggml_gallocr_alloc_graph(ctx.compute_allocr, graph);
+  }
   const auto t2 = Clock::now();
 
-  if (should_log_compute_buffer()) {
+  if (should_log_compute_buffer() && ctx.compute_allocr) {
     auto buffer_size = ggml_gallocr_get_buffer_size(ctx.compute_allocr, 0);
     fprintf(stderr, "compute buffer size: %.2f MB\n",
             buffer_size / 1024.0 / 1024.0);
   }
 
   // run the computation
+  const int n_threads = get_num_threads();
   if (ggml_backend_is_cpu(ctx.backend)) {
-    ggml_backend_cpu_set_n_threads(ctx.backend, get_num_threads());
+    ggml_backend_cpu_set_n_threads(ctx.backend, n_threads);
+  }
+#ifdef GGML_USE_BLAS
+  if (ctx.blas_backend) {
+    ggml_backend_blas_set_n_threads(ctx.blas_backend,
+                                    get_blas_num_threads(n_threads));
+  }
+#endif
+
+  enum ggml_status compute_status = GGML_STATUS_SUCCESS;
+  if (ctx.blas_backend) {
+    ggml_backend_t backends[] = {ctx.blas_backend, ctx.backend};
+    ggml_backend_buffer_type_t bufts[] = {
+        ggml_backend_get_default_buffer_type(ctx.backend),
+        ggml_backend_get_default_buffer_type(ctx.backend),
+    };
+    ctx.compute_sched =
+        ggml_backend_sched_new(backends, bufts, 2, ggml_graph_size(graph),
+                               false, true);
+    compute_status = ggml_backend_sched_graph_compute(ctx.compute_sched, graph);
+  } else {
+    compute_status = ggml_backend_graph_compute(ctx.backend, graph);
+  }
+  const auto t3 = Clock::now();
+
+  if (compute_status != GGML_STATUS_SUCCESS) {
+    throw std::runtime_error("ggml graph compute failed");
   }
 
-  ggml_backend_graph_compute(ctx.backend, graph);
-  const auto t3 = Clock::now();
+  if (should_print_graph()) {
+    ggml_graph_print(graph);
+  }
 
   if (should_profile()) {
     fprintf(stderr,
-            "profile,build_graph_ms=%.3f,alloc_graph_ms=%.3f,compute_ms=%.3f,nodes=%d,batch=%zu\n",
+            "profile,build_graph_ms=%.3f,alloc_graph_ms=%.3f,compute_ms=%.3f,nodes=%d,batch=%zu,blas=%d\n",
             elapsed_ms(t0, t1), elapsed_ms(t1, t2), elapsed_ms(t2, t3),
-            ggml_graph_n_nodes(graph), batch.size());
+            ggml_graph_n_nodes(graph), batch.size(), ctx.blas_backend ? 1 : 0);
   }
 
   return graph;

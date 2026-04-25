@@ -131,22 +131,49 @@ Measured on this PC:
 - Fair baseline GGUF: `models/snowflake-arctic-embed-m-v2.0.fp32.gguf`
 - Production GGUF: `models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`
 
-Fair cross-runner baseline, `threads=12`, `batch=8`, serial runs:
+Fair cross-runner baseline, `threads=12`, `batch=8`, serial runs,
+`scope=end_to_end`. This table keeps all three runners in `fp32` where the
+comparison is like-for-like and uses the same realistic randomized text pool as
+the production table below:
 
 | Runner | Format | Mean ms | P50 ms | P95 ms | Text/s | RSS MB |
 |---|---|---:|---:|---:|---:|---:|
-| `python_cpu` | HF `fp32` | 59.49 | 58.71 | 64.05 | 134.48 | 1128.0 |
-| `tei_engine` | ORT `fp32` | 60.54 | 58.74 | 67.32 | 132.14 | 1955.8 |
-| `embeddings.cpp` | GGUF `fp32` | 172.24 | 136.39 | 352.82 | 46.45 | 1470.8 |
+| `python_cpu` | HF `fp32` | 144.25 | 97.91 | 354.04 | 55.46 | 1148.9 |
+| `tei_engine` | ORT `fp32` | 102.62 | 92.49 | 117.58 | 77.96 | 1972.6 |
+| `embeddings.cpp` | GGUF `fp32` | 249.68 | 233.98 | 311.03 | 32.04 | 1534.6 |
 
-For this Snowflake CPU path, the fast TEI row above is mostly an ONNX Runtime
+For this Snowflake CPU path, the TEI row above is mostly an ONNX Runtime
 result, not a router result. TEI's ORT backend applies graph optimization on
-this model; that is why the `tei_engine` line is close to Python `fp32`. A
-future Candle-only TEI row would be a different backend and should be reported
-as a separate line, not mixed into the main `fp32` baseline.
+this model. A future Candle-only TEI row would be a different backend and
+should be reported as a separate line, not mixed into the main `fp32`
+baseline.
+
+Production comparator, `threads=12`, `batch=8`, `warmup=3`,
+`iterations=12`, serial runs, `scope=end_to_end`. This table uses
+`scripts/profile_snowflake.py` with its realistic randomized text pool and
+includes tokenization on every runner. For Snowflake on this host, `p50/p95`
+and RSS are the primary numbers; `mean` can be distorted by host jitter.
+
+| Runner | Backend / Format | Mean ms | P50 ms | P95 ms | Text/s | RSS MB | Accuracy vs Python `fp32` |
+|---|---|---:|---:|---:|---:|---:|---|
+| `python_cpu` | HF `fp32` | 91.01 | 84.91 | 110.71 | 87.90 | 1157.0 | reference |
+| `tei_engine_ort` | ORT `fp32` | 96.89 | 97.89 | 107.98 | 82.57 | 1965.3 | reference-level `fp32` |
+| `embeddings.cpp` | GGUF `q4_k_mlp_q8_attn` | 90.02 | 92.43 | 94.23 | 88.87 | 543.1 | min cos `0.991448` |
+
+![Snowflake CPU benchmark](docs/snowflake-production-benchmark.png)
+
+With this production quantization, `embeddings.cpp` is in the same end-to-end
+latency tier as Python CPU and TEI ORT on this host while using much less RSS.
+Compared with TEI ORT, resident memory is about 3.6x lower. Compared with
+Python CPU, resident memory is about 2.1x lower.
+
+The mixed quantization keeps attention weights at `q8_0` and quantizes MLP
+weights to `q4_K`. That is intentional: attention is more accuracy-sensitive on
+this model, while the MLP dominates model size and benefits most from lower-bit
+weights.
 
 `embeddings.cpp` quantization trade-offs on the same machine, same `threads=12`,
-same `batch=8`. These rows come from isolated per-quant runs:
+same `batch=8`. These rows come from isolated per-quant sweeps:
 
 | Quant | Size MB | Mean ms | Text/s | RSS MB | Worst Min Cos | Batch Min Cos |
 |---|---:|---:|---:|---:|---:|---:|
@@ -174,7 +201,7 @@ Observed on this CPU:
 - `q6_k` is the smallest config that still keeps `Worst Min Cos` above `0.99` in
   this Snowflake suite.
 - `q4_k_mlp_q8_attn` is the current production default because it stays close to
-  Python `fp32` throughput while cutting RSS by more than half.
+  Python CPU and TEI ORT end-to-end latency while cutting RSS sharply.
 - `q4_k`, `q4_0`, `q4_0_embf16`, and `q4_0_mlp_q4_k_attn` are fast, but the
   output drift is large enough that they are not the default recommendation for
   correctness-sensitive use.

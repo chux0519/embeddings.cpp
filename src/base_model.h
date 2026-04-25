@@ -40,6 +40,7 @@ class BackendContext {
 
   // memory buffers to evaluate the model
   ggml_backend_t backend = NULL;
+  ggml_backend_t blas_backend = NULL;
   ggml_backend_buffer_t weights_buffer = NULL;
 
   // load tokens into here, to compute
@@ -49,6 +50,7 @@ class BackendContext {
   // the compute graph for each forward process
   struct ggml_context *compute_graph_ctx = NULL;
   ggml_gallocr_t compute_allocr = NULL;
+  ggml_backend_sched_t compute_sched = NULL;
 };
 
 enum class PoolingMethod { MEAN = 0, CLS = 1 };
@@ -95,6 +97,7 @@ class BaseModel {
   // Member variables
   std::string model_path;
   std::string arch;
+  int model_ftype = GGML_FTYPE_UNKNOWN;
   BaseConfig *hparams =
       nullptr;  // NEW: Use base class pointer to store hparams
   BackendContext ctx;

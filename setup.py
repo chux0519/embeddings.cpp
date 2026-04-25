@@ -51,9 +51,10 @@ class CMakeBuild(build_ext):
             f"-DEMBEDDINGS_CPP_ENABLE_PYBIND=ON",
             f"-DBUILD_SHARED_LIBS=OFF",
             "-DGGML_CPU_REPACK=ON",
+            "-DGGML_LLAMAFILE=ON",
             "-DGGML_BLAS=OFF",
             "-DGGML_OPENMP=OFF",
-            "-DGGML_NATIVE=OFF",
+            "-DGGML_NATIVE=ON",
             "-DGGML_CUDA=OFF",
             "-DGGML_VULKAN=OFF",
         ]
