@@ -1,0 +1,25 @@
+{
+  "name": "@embeddings-cpp/snowflake-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser-first Snowflake embedding client design scaffold for embeddings.cpp",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "embeddings",
+    "snowflake",
+    "browser",
+    "wasm",
+    "webgpu"
+  ],
+  "license": "MIT"
+}
