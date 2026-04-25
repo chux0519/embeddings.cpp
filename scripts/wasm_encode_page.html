@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>embeddings.cpp wasm encode</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    pre { white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <h1>embeddings.cpp wasm encode</h1>
+  <div id="status">waiting</div>
+  <pre id="log"></pre>
+  <script>
+    (async function () {
+      const params = new URLSearchParams(window.location.search);
+      const buildDir = params.get("build") || "build-wasm-web-dyn";
+      const backend = params.get("backend") || "";
+      const threads = params.get("threads");
+      const pooling = params.get("pooling") || "cls";
+      const normalize = params.get("normalize") !== "0";
+      const modelPath = params.get("model_path") || "/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf";
+      const modelUrl = params.get("model_url") || "";
+      const status = document.getElementById('status');
+      const log = document.getElementById('log');
+      const fileCacheName = "embeddings-browser-files-v1";
+      let jsonBuffer = [];
+      let collecting = false;
+
+      function append(line) {
+        log.textContent += line + "\n";
+      }
+
+      window.addEventListener("error", (event) => {
+        append(`[window-error] ${event.message || event.error || "unknown"}`);
+        if (event.error && event.error.stack) {
+          append(String(event.error.stack));
+        }
+      });
+
+      window.addEventListener("unhandledrejection", (event) => {
+        const reason = event.reason;
+        if (reason && typeof reason === "object") {
+          append(`[unhandledrejection] ${JSON.stringify({
+            name: reason.name,
+            message: reason.message,
+            code: reason.code,
+            errno: reason.errno,
+            stack: reason.stack,
+          })}`);
+        } else {
+          append(`[unhandledrejection] ${reason || "unknown"}`);
+        }
+      });
+
+      function fileCacheKey(kind, url) {
+        return `/__cache__/${kind}/${encodeURIComponent(url)}`;
+      }
+
+      async function fetchCachedBytes(url, cacheKey) {
+        const cache = await caches.open(fileCacheName);
+        const cached = await cache.match(cacheKey);
+        if (cached) {
+          append(`[cache-hit] ${cacheKey}`);
+          return new Uint8Array(await cached.arrayBuffer());
+        }
+
+        append(`[fetch] ${url}`);
+        const response = await fetch(url, { cache: "reload" });
+        if (!response.ok) {
+          throw new Error(`failed to fetch ${url}: ${response.status}`);
+        }
+        await cache.put(cacheKey, response.clone());
+        return new Uint8Array(await response.arrayBuffer());
+      }
+
+      function ensureDir(path) {
+        const parts = path.split("/").filter(Boolean);
+        let current = "";
+        for (const part of parts) {
+          current += "/" + part;
+          try {
+            FS.mkdir(current);
+          } catch (err) {
+            if (!String(err).includes("File exists")) {
+              throw err;
+            }
+          }
+        }
+      }
+
+      function tryFinish(line) {
+        const trimmed = String(line).trim();
+        if (trimmed === "{") {
+          collecting = true;
+          jsonBuffer = ["{"];
+          return;
+        }
+        if (collecting) {
+          jsonBuffer.push(String(line));
+          if (trimmed === "}") {
+            collecting = false;
+            const text = jsonBuffer.join("\n");
+            try {
+              const result = JSON.parse(text);
+              status.textContent = "done";
+              window.parent.postMessage({ type: "encode-result", result, error: null }, "*");
+            } catch (err) {
+              const error = "failed to parse result: " + err.message;
+              status.textContent = "parse-error";
+              window.parent.postMessage({ type: "encode-result", result: null, error }, "*");
+            }
+          }
+        }
+      }
+
+      const request = await new Promise((resolve) => {
+        window.addEventListener("message", (event) => {
+          const data = event.data || {};
+          if (data.type === "encode-request") {
+            resolve(data);
+          }
+        }, { once: true });
+        status.textContent = "waiting-request";
+      });
+
+      const files = [];
+      if (modelUrl) {
+        files.push({
+          url: modelUrl,
+          cacheKey: fileCacheKey("model", modelUrl),
+          path: modelPath,
+        });
+      }
+      const batchPath = "/input_batch.txt";
+      const batchBytes = new TextEncoder().encode(request.batchLine + "\n");
+
+      const preparedFiles = [];
+      for (const file of files) {
+        const bytes = await fetchCachedBytes(file.url, file.cacheKey);
+        preparedFiles.push({ path: file.path, bytes });
+      }
+      preparedFiles.push({ path: batchPath, bytes: batchBytes });
+
+      window.Module = {
+        arguments: [
+          "--model", modelPath,
+          "--batch", batchPath,
+          "--pooling", pooling,
+        ],
+        preRun: [function () {
+          for (const file of preparedFiles) {
+            const slash = file.path.lastIndexOf("/");
+            if (slash > 0) {
+              ensureDir(file.path.slice(0, slash));
+            }
+            FS.writeFile(file.path, file.bytes);
+            const analyzed = FS.analyzePath(file.path);
+            append(`[preRun] ${file.path} exists=${analyzed.exists} object=${analyzed.object ? analyzed.object.mode : "null"}`);
+          }
+        }],
+        locateFile: function (path) {
+          return "/" + buildDir + "/" + path;
+        },
+        print: function (text) {
+          append(text);
+          tryFinish(text);
+        },
+        printErr: function (text) {
+          append("[stderr] " + text);
+        },
+        setStatus: function (text) {
+          status.textContent = text;
+        },
+        onAbort: function (reason) {
+          const error = String(reason);
+          status.textContent = "abort";
+          window.parent.postMessage({ type: "encode-result", result: null, error }, "*");
+        }
+      };
+      if (threads) {
+        window.Module.arguments.push("--threads", threads);
+      }
+      if (backend) {
+        window.Module.arguments.push("--backend", backend);
+      }
+      if (!normalize) {
+        window.Module.arguments.push("--no-normalize");
+      }
+
+      const script = document.createElement("script");
+      script.src = "/" + buildDir + "/embedding_wasm_model_encode.js";
+      script.onerror = function () {
+        const error = "failed to load encode script";
+        status.textContent = "load-error";
+        window.parent.postMessage({ type: "encode-result", result: null, error }, "*");
+      };
+      document.body.appendChild(script);
+    })().catch((err) => {
+      const status = document.getElementById('status');
+      const log = document.getElementById('log');
+      const message = String(err && err.message ? err.message : err);
+      status.textContent = "prepare-error";
+      log.textContent += `[prepare-error] ${message}\n`;
+      window.parent.postMessage({ type: "encode-result", result: null, error: message }, "*");
+    });
+  </script>
+</body>
+</html>

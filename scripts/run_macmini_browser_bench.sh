@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HOST="${HOST:-192.168.1.102}"
+HOST="${HOST:-192.168.1.101}"
 REMOTE_DIR="${REMOTE_DIR:-~/repos/embeddings.cpp-macmini}"
 MODEL_NAME="${MODEL_NAME:-snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf}"
 MODEL_SRC="${MODEL_SRC:-models/${MODEL_NAME}}"
@@ -104,6 +104,7 @@ ssh "${SSH_OPTS[@]}" "${HOST}" "bash -lc '
   fi
   emcmake \"\$CMAKE_BIN\" -S . -B build-wasm-webgpu-browser \"\${WEBGPU_ARGS[@]}\"
   \"\$CMAKE_BIN\" --build build-wasm-webgpu-browser --target embedding_wasm_model_bench -j\$(sysctl -n hw.ncpu)
+  ./scripts/build_browser_dynamic.sh
 '"
 
 echo "[5/5] running browser bench on remote"
@@ -116,5 +117,6 @@ ssh "${SSH_OPTS[@]}" "${HOST}" "bash -lc '
   server_pid=\$!
   trap \"kill \$server_pid >/dev/null 2>&1 || true\" EXIT
   sleep 2
-  EXECUTABLE_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" \"\$NODE_BIN\" scripts/run_browser_cases.mjs
+  EXECUTABLE_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" MODE=bundled \"\$NODE_BIN\" scripts/run_browser_cases.mjs
+  EXECUTABLE_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" MODE=downloaded MODEL_URL=\"http://127.0.0.1:${PORT}/models/${MODEL_NAME}\" BATCH_URL=\"http://127.0.0.1:${PORT}/scripts/data/snowflake_wasm_batch1.txt\" \"\$NODE_BIN\" scripts/run_browser_cases.mjs
 '"

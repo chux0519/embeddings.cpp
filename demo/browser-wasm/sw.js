@@ -1,4 +1,4 @@
-const CACHE_NAME = 'embeddings-browser-demo-v1';
+const CACHE_NAME = 'embeddings-browser-demo-v4';
 const ALLOWED_PREFIXES = [
   '/build-wasm-web/',
   '/build-wasm-web-dyn/',
@@ -7,6 +7,7 @@ const ALLOWED_PREFIXES = [
   '/build-wasm-webgpu-browser/',
   '/build-wasm-webgpu-browser-dyn/',
   '/scripts/wasm_bench_page.html',
+  '/scripts/wasm_encode_page.html',
   '/demo/browser-wasm/',
 ];
 

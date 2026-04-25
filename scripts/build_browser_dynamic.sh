@@ -34,7 +34,7 @@ emcmake "$CMAKE_BIN" -S . -B build-wasm-web-dyn \
   -DGGML_WEBGPU=OFF \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_EXE_LINKER_FLAGS="$common_flags"
-"$CMAKE_BIN" --build build-wasm-web-dyn --target embedding_wasm_model_bench -j"$BUILD_JOBS"
+"$CMAKE_BIN" --build build-wasm-web-dyn --target embedding_wasm_model_bench embedding_wasm_model_encode -j"$BUILD_JOBS"
 
 emcmake "$CMAKE_BIN" -S . -B build-wasm-web-pthread-dyn \
   -DGGML_WEBGPU=OFF \
@@ -42,7 +42,7 @@ emcmake "$CMAKE_BIN" -S . -B build-wasm-web-pthread-dyn \
   -DCMAKE_C_FLAGS="-sUSE_PTHREADS=1 -pthread" \
   -DCMAKE_CXX_FLAGS="-sUSE_PTHREADS=1 -pthread" \
   -DCMAKE_EXE_LINKER_FLAGS="$pthread_flags"
-"$CMAKE_BIN" --build build-wasm-web-pthread-dyn --target embedding_wasm_model_bench -j"$BUILD_JOBS"
+"$CMAKE_BIN" --build build-wasm-web-pthread-dyn --target embedding_wasm_model_bench embedding_wasm_model_encode -j"$BUILD_JOBS"
 
 webgpu_args=(
   -DGGML_WEBGPU=ON
@@ -55,4 +55,4 @@ if [[ -d "$EMDAWNWEBGPU_DIR" ]]; then
 fi
 
 emcmake "$CMAKE_BIN" -S . -B build-wasm-webgpu-browser-dyn "${webgpu_args[@]}"
-"$CMAKE_BIN" --build build-wasm-webgpu-browser-dyn --target embedding_wasm_model_bench -j"$BUILD_JOBS"
+"$CMAKE_BIN" --build build-wasm-webgpu-browser-dyn --target embedding_wasm_model_bench embedding_wasm_model_encode -j"$BUILD_JOBS"

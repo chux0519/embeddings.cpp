@@ -2,12 +2,48 @@ import { chromium } from 'playwright';
 
 const executablePath = process.env.EXECUTABLE_PATH || undefined;
 const base = process.env.BASE_URL || 'http://127.0.0.1:18081/scripts/wasm_bench_page.html';
+const mode = process.env.MODE || 'bundled';
+const threads = process.env.THREADS || '8';
+const modelUrl = process.env.MODEL_URL || 'http://127.0.0.1:18081/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf';
+const batchUrl = process.env.BATCH_URL || 'http://127.0.0.1:18081/scripts/data/snowflake_wasm_batch1.txt';
 const defaultArgs = ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist'];
 
+function buildDir(runtime) {
+  if (mode === 'downloaded') {
+    if (runtime === 'single') return 'build-wasm-web-dyn';
+    if (runtime === 'pthread') return 'build-wasm-web-pthread-dyn';
+    if (runtime === 'webgpu') return 'build-wasm-webgpu-browser-dyn';
+  }
+  if (runtime === 'single') return 'build-wasm-web';
+  if (runtime === 'pthread') return 'build-wasm-web-pthread';
+  if (runtime === 'webgpu') return 'build-wasm-webgpu-browser';
+  throw new Error(`unknown runtime: ${runtime}`);
+}
+
+function caseUrl(runtime) {
+  const params = new URLSearchParams({
+    build: buildDir(runtime),
+    batch: '/snowflake_wasm_batch1.txt',
+    warmup: '1',
+    iterations: '3',
+  });
+  if (runtime === 'pthread') {
+    params.set('threads', threads);
+  }
+  if (runtime === 'webgpu') {
+    params.set('backend', 'webgpu');
+  }
+  if (mode === 'downloaded') {
+    params.set('model_url', modelUrl);
+    params.set('batch_url', batchUrl);
+  }
+  return `${base}?${params.toString()}`;
+}
+
 const cases = [
-  ['single', `${base}?build=build-wasm-web&batch=/snowflake_wasm_batch1.txt&warmup=1&iterations=3`],
-  ['pthread8', `${base}?build=build-wasm-web-pthread&batch=/snowflake_wasm_batch1.txt&warmup=1&iterations=3&threads=8`],
-  ['webgpu', `${base}?build=build-wasm-webgpu-browser&backend=webgpu&batch=/snowflake_wasm_batch1.txt&warmup=1&iterations=3`],
+  [`${mode}-single`, caseUrl('single')],
+  [`${mode}-pthread${threads}`, caseUrl('pthread')],
+  [`${mode}-webgpu`, caseUrl('webgpu')],
 ];
 
 async function run(url, args = []) {

@@ -37,6 +37,12 @@ add_executable(embedding_wasm_model_bench
     src/gte.cpp
     src/utils.cpp
 )
+add_executable(embedding_wasm_model_encode
+    src/wasm_model_encode.cpp
+    src/base_model.cpp
+    src/gte.cpp
+    src/utils.cpp
+)
 add_executable(quantize src/quantize.cpp)
 add_executable(test_embedding tests/test_embedding.cpp)
 add_executable(test_tokenizer tests/test_tokenizer.cpp)
@@ -45,6 +51,7 @@ add_executable(test_tokenizer tests/test_tokenizer.cpp)
 target_link_libraries(embedding_cli PRIVATE embeddings)
 target_link_libraries(embedding_wasm_bench PRIVATE embeddings)
 target_link_libraries(embedding_wasm_model_bench PRIVATE ggml)
+target_link_libraries(embedding_wasm_model_encode PRIVATE ggml)
 target_link_libraries(quantize PRIVATE embeddings)
 target_link_libraries(test_embedding PRIVATE embeddings)
 target_link_libraries(test_tokenizer PRIVATE embeddings)

@@ -4,15 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Snowflake Browser WASM Demo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/demo/browser-wasm/vendor/tailwindcss.js"></script>
+  <script src="/demo/browser-wasm/vendor/web-tokenizers.js"></script>
 </head>
 <body class="min-h-screen bg-stone-100 text-stone-900">
-  <main class="mx-auto max-w-6xl px-6 py-8">
+  <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
     <section class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
       <div class="space-y-5">
         <div class="space-y-3">
           <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Snowflake Browser WASM</p>
-          <h1 class="text-4xl font-semibold leading-tight text-stone-950">Run the quantized Snowflake model in Chromium.</h1>
+          <h1 class="text-3xl font-semibold leading-tight text-stone-950 sm:text-4xl">Run the quantized Snowflake model in Chromium.</h1>
           <p class="max-w-3xl text-sm leading-6 text-stone-700">
             This page benchmarks the packaged <code>q4_k_mlp_q8_attn</code> artifact in Chromium with
             the same token batch across single-thread WASM, pthread WASM, and WebGPU when the browser
@@ -52,30 +53,72 @@
 
         <label class="grid gap-2 rounded-md border border-stone-300 bg-white p-4 text-sm text-stone-700">
           <span class="block text-xs uppercase tracking-wide text-stone-500">Model URL</span>
-          <input id="model-url" type="text" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900"
-            value="https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf">
-          <span class="text-xs leading-5 text-stone-500">Used only in Downloaded mode. Bundled mode uses the preloaded local artifact.</span>
+          <input id="model-url" type="text" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-xs text-stone-900 sm:text-sm">
+          <span class="text-xs leading-5 text-stone-500">Used only in Downloaded mode. Same-origin model URLs are the most reliable on COEP pages.</span>
         </label>
 
-        <div class="flex flex-wrap gap-3">
-          <button id="run-recommended" class="rounded-md bg-sky-800 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700">
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <button id="run-recommended" class="w-full rounded-md bg-sky-800 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700">
             Run Recommended
           </button>
-          <button id="run-single" class="rounded-md bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800">
+          <button id="run-single" class="w-full rounded-md bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800">
             Run Single-Thread
           </button>
-          <button id="run-pthread" class="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600">
+          <button id="run-pthread" class="w-full rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600">
             Run Pthreads
           </button>
-          <button id="run-webgpu" class="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600">
+          <button id="run-webgpu" class="w-full rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600">
             Run WebGPU
           </button>
-          <button id="clear-results" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:border-stone-400">
+          <button id="clear-results" class="w-full rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:border-stone-400">
             Clear
           </button>
         </div>
 
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="rounded-md border border-stone-300 bg-white p-4">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p class="text-xs uppercase tracking-wide text-stone-500">Text To Vector</p>
+              <p class="mt-2 text-sm leading-6 text-stone-700">
+                Enter one sentence or query. The browser tokenizes it locally, runs the selected Snowflake runtime,
+                and returns one normalized embedding vector.
+              </p>
+            </div>
+            <button id="embed-input-btn" class="w-full rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 sm:w-auto sm:shrink-0">
+              Embed Input
+            </button>
+          </div>
+          <div class="mt-4 grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+            <div class="space-y-3">
+              <label class="block text-xs uppercase tracking-wide text-stone-500" for="embed-input">Input</label>
+              <textarea id="embed-input" rows="5" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm leading-6 text-stone-900">你好，世界。请把这句话编码成 embedding 向量。</textarea>
+              <div class="grid gap-3 sm:grid-cols-3">
+                <div class="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+                  <p class="text-xs uppercase tracking-wide text-stone-500">Tokenizer</p>
+                  <p id="embed-token-count" class="mt-1 text-sm font-medium text-stone-900">-</p>
+                </div>
+                <div class="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+                  <p class="text-xs uppercase tracking-wide text-stone-500">Dimension</p>
+                  <p id="embed-dim" class="mt-1 text-sm font-medium text-stone-900">-</p>
+                </div>
+                <div class="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+                  <p class="text-xs uppercase tracking-wide text-stone-500">Runtime</p>
+                  <p id="embed-runtime" class="mt-1 text-sm font-medium text-stone-900">-</p>
+                </div>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <label class="block text-xs uppercase tracking-wide text-stone-500" for="embed-preview">Vector Preview</label>
+              <textarea id="embed-preview" rows="5" readonly class="w-full rounded-md border border-stone-300 bg-stone-50 px-3 py-2 font-mono text-[11px] leading-5 text-stone-700 sm:text-xs"></textarea>
+              <details class="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+                <summary class="cursor-pointer text-sm font-medium text-stone-900">Full vector JSON</summary>
+                <pre id="embed-json" class="mt-3 max-h-64 overflow-auto text-xs leading-5 text-stone-700"></pre>
+              </details>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div class="rounded-md border border-stone-300 bg-white p-4">
             <p class="text-xs uppercase tracking-wide text-stone-500">Status</p>
             <p id="status" class="mt-2 text-lg font-semibold text-stone-950">Idle</p>
@@ -147,14 +190,14 @@
                 <option value="webgpu">WebGPU</option>
               </select>
             </label>
-          <div class="flex flex-wrap gap-3">
-              <button id="cache-build-btn" class="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800">
+          <div class="grid gap-3 sm:grid-cols-2">
+              <button id="cache-build-btn" class="w-full rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800">
                 Cache Bundle
               </button>
-              <button id="cache-model-btn" class="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600">
+              <button id="cache-model-btn" class="w-full rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600">
                 Cache Model URL
               </button>
-              <button id="clear-cache-btn" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:border-stone-400">
+              <button id="clear-cache-btn" class="w-full rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:border-stone-400 sm:col-span-2">
                 Clear Cache
               </button>
             </div>
@@ -172,6 +215,7 @@
   </main>
 
   <iframe id="runner-frame" class="hidden" title="wasm-runner"></iframe>
+  <iframe id="encode-frame" class="hidden" title="wasm-encoder"></iframe>
 
   <script>
     const statusEl = document.getElementById("status");
@@ -182,6 +226,7 @@
     const resultsBody = document.getElementById("results-body");
     const logEl = document.getElementById("log");
     const frame = document.getElementById("runner-frame");
+    const encodeFrame = document.getElementById("encode-frame");
     const scenarioEl = document.getElementById("scenario");
     const artifactModeEl = document.getElementById("artifact-mode");
     const modelUrlEl = document.getElementById("model-url");
@@ -191,8 +236,14 @@
     const cacheBuildEl = document.getElementById("cache-build");
     const cacheStatusEl = document.getElementById("cache-status");
     const storageEstimateEl = document.getElementById("storage-estimate");
+    const embedInputEl = document.getElementById("embed-input");
+    const embedTokenCountEl = document.getElementById("embed-token-count");
+    const embedDimEl = document.getElementById("embed-dim");
+    const embedRuntimeEl = document.getElementById("embed-runtime");
+    const embedPreviewEl = document.getElementById("embed-preview");
+    const embedJsonEl = document.getElementById("embed-json");
     const detectedThreads = Math.max(1, Math.min(12, navigator.hardwareConcurrency || 4));
-    const demoCacheName = "embeddings-browser-demo-v1";
+    const demoCacheName = "embeddings-browser-demo-v4";
     const fileCacheName = "embeddings-browser-files-v1";
     const buildConfig = {
       bundled: {
@@ -209,6 +260,7 @@
 
     let runCount = 0;
     let hasRows = false;
+    let snowflakeTokenizer = null;
     let recommendedRuntime = {
       key: "single",
       label: "Single-thread",
@@ -216,6 +268,7 @@
     };
 
     threadsEl.value = String(detectedThreads);
+    modelUrlEl.value = `${window.location.origin}/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`;
 
     function setSummary(label, result) {
       runnerEl.textContent = label;
@@ -244,6 +297,107 @@
       recommendedRuntime = runtime;
       recommendedRuntimeEl.textContent = `${runtime.label}`;
       recommendedRuntimeEl.title = runtime.reason;
+    }
+
+    async function getSnowflakeTokenizer() {
+      if (snowflakeTokenizer) {
+        return snowflakeTokenizer;
+      }
+      const response = await fetch("/demo/browser-wasm/assets/snowflake-tokenizer.json", { cache: "reload" });
+      if (!response.ok) {
+        throw new Error(`failed to load tokenizer.json: ${response.status}`);
+      }
+      const json = await response.arrayBuffer();
+      snowflakeTokenizer = await window.tokenizers.Tokenizer.fromJSON(json);
+      return snowflakeTokenizer;
+    }
+
+    function runtimeKeyForEmbed() {
+      if (recommendedRuntime.key === "webgpu") {
+        return "webgpu";
+      }
+      if (recommendedRuntime.key === "pthread") {
+        return "pthread";
+      }
+      return "single";
+    }
+
+    function buildInfoForEmbed() {
+      const runtimeKey = runtimeKeyForEmbed();
+      return buildConfig.downloaded[runtimeKey];
+    }
+
+    function embedRuntimeLabel() {
+      const runtimeKey = runtimeKeyForEmbed();
+      if (runtimeKey === "webgpu") {
+        return "WebGPU";
+      }
+      if (runtimeKey === "pthread") {
+        return "Pthreads";
+      }
+      return "Single-thread";
+    }
+
+    function encodeBatchLine(ids) {
+      const mask = ids.map(() => 1);
+      return `${Array.from(ids).join(",")}\t${mask.join(",")}`;
+    }
+
+    async function encodeInputText() {
+      const text = embedInputEl.value.trim();
+      if (!text) {
+        throw new Error("input text is empty");
+      }
+      const tokenizer = await getSnowflakeTokenizer();
+      const ids = tokenizer.encode(text);
+      const batchLine = encodeBatchLine(ids);
+      const buildInfo = buildInfoForEmbed();
+      embedTokenCountEl.textContent = String(ids.length);
+      embedRuntimeEl.textContent = embedRuntimeLabel();
+      embedDimEl.textContent = "Running";
+      embedPreviewEl.value = "";
+      embedJsonEl.textContent = "";
+      statusEl.textContent = "Encoding";
+
+      const params = new URLSearchParams({
+        build: buildInfo.dir,
+        model_url: modelUrlEl.value.trim(),
+        pooling: "cls",
+      });
+      if (runtimeKeyForEmbed() === "pthread") {
+        params.set("threads", threadsEl.value);
+      }
+      if (runtimeKeyForEmbed() === "webgpu") {
+        params.set("backend", "webgpu");
+      }
+
+      const done = new Promise((resolve, reject) => {
+        function onMessage(event) {
+          const data = event.data || {};
+          if (data.type !== "encode-result") {
+            return;
+          }
+          window.removeEventListener("message", onMessage);
+          if (data.error || !data.result || !Array.isArray(data.result.vectors)) {
+            reject(new Error(String(data.error || "encode failed")));
+            return;
+          }
+          resolve(data.result);
+        }
+        window.addEventListener("message", onMessage);
+      });
+
+      encodeFrame.src = `/scripts/wasm_encode_page.html?${params.toString()}`;
+      await new Promise((resolve) => {
+        encodeFrame.onload = () => resolve();
+      });
+      encodeFrame.contentWindow.postMessage({ type: "encode-request", batchLine }, "*");
+      const result = await done;
+      const vector = result.vectors[0] || [];
+      embedDimEl.textContent = String(vector.length);
+      embedPreviewEl.value = vector.slice(0, 32).map((x) => Number(x).toFixed(6)).join(", ");
+      embedJsonEl.textContent = JSON.stringify(vector, null, 2);
+      statusEl.textContent = "Done";
     }
 
     function scenarioBatchPath() {
@@ -275,11 +429,18 @@
         "/scripts/wasm_bench_page.html",
         "/demo/browser-wasm/index.html",
         "/demo/browser-wasm/sw.js",
+        "/demo/browser-wasm/vendor/tailwindcss.js",
+        "/demo/browser-wasm/vendor/web-tokenizers.js",
+        "/demo/browser-wasm/assets/snowflake-tokenizer.json",
         `/${buildInfo.dir}/embedding_wasm_model_bench.js`,
         `/${buildInfo.dir}/embedding_wasm_model_bench.wasm`,
       ];
       if (buildInfo.hasData) {
         assets.push(`/${buildInfo.dir}/embedding_wasm_model_bench.data`);
+      } else {
+        assets.push("/scripts/wasm_encode_page.html");
+        assets.push(`/${buildInfo.dir}/embedding_wasm_model_encode.js`);
+        assets.push(`/${buildInfo.dir}/embedding_wasm_model_encode.wasm`);
       }
       return assets;
     }
@@ -451,6 +612,17 @@
         </tr>
       `;
       frame.removeAttribute("src");
+    });
+
+    document.getElementById("embed-input-btn").addEventListener("click", async () => {
+      try {
+        await encodeInputText();
+      } catch (error) {
+        statusEl.textContent = "Failed";
+        embedDimEl.textContent = "Error";
+        embedPreviewEl.value = String(error.message || error);
+        embedJsonEl.textContent = "";
+      }
     });
 
     document.getElementById("cache-build-btn").addEventListener("click", async () => {
