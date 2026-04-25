@@ -125,3 +125,12 @@ For a productized browser path, the useful minimum is:
 The current demo still uses Emscripten preload files because it is the shortest
 path to a repeatable benchmark. A production browser loader should instead
 download the GGUF dynamically, persist it locally, and reuse it across reloads.
+
+The demo now includes a minimal cache implementation:
+
+- a service worker for browser bundle requests
+- explicit bundle prefetch into `Cache Storage`
+- browser storage estimates in the UI
+
+This is still a bundle cache, not a final GGUF chunk cache. It is the shortest
+step from a benchmark page to an actual reusable browser deployment path.

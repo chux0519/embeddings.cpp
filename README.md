@@ -301,7 +301,8 @@ Platform for the browser numbers below:
 On this host, WebGPU stays ahead not just for a single short sentence, but also
 for mixed multilingual input and a more realistic short-query batch. The static
 demo is at [demo/browser-wasm/index.html](/home/yongsheng/repos/embeddings.cpp/demo/browser-wasm/index.html),
-and the full method plus detailed numbers are in
+and now supports service-worker-backed bundle caching for `single-thread`,
+`pthread`, and `WebGPU` artifacts. The full method plus detailed numbers are in
 [docs/BROWSER_BENCHMARK.md](/home/yongsheng/repos/embeddings.cpp/docs/BROWSER_BENCHMARK.md).
 
 ## HTTP Server

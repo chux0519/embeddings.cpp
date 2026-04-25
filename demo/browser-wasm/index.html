@@ -116,6 +116,30 @@
         </div>
 
         <div class="rounded-md border border-stone-300 bg-white p-4">
+          <p class="text-xs uppercase tracking-wide text-stone-500">Offline Cache</p>
+          <div class="mt-3 grid gap-3">
+            <label class="space-y-2 text-sm text-stone-700">
+              <span class="block text-xs uppercase tracking-wide text-stone-500">Bundle</span>
+              <select id="cache-build" class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900">
+                <option value="build-wasm-web">Single-thread WASM</option>
+                <option value="build-wasm-web-pthread">Pthreads WASM</option>
+                <option value="build-wasm-webgpu-browser">WebGPU</option>
+              </select>
+            </label>
+            <div class="flex flex-wrap gap-3">
+              <button id="cache-build-btn" class="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800">
+                Cache Bundle
+              </button>
+              <button id="clear-cache-btn" class="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:border-stone-400">
+                Clear Cache
+              </button>
+            </div>
+            <p id="cache-status" class="text-sm leading-6 text-stone-700">No bundle cached yet.</p>
+            <p id="storage-estimate" class="text-xs leading-5 text-stone-500">Storage estimate unavailable.</p>
+          </div>
+        </div>
+
+        <div class="rounded-md border border-stone-300 bg-white p-4">
           <p class="text-xs uppercase tracking-wide text-stone-500">Log</p>
           <pre id="log" class="mt-2 max-h-[28rem] overflow-auto text-xs leading-5 text-stone-700"></pre>
         </div>
@@ -137,7 +161,11 @@
     const threadsEl = document.getElementById("threads");
     const warmupEl = document.getElementById("warmup");
     const iterationsEl = document.getElementById("iterations");
+    const cacheBuildEl = document.getElementById("cache-build");
+    const cacheStatusEl = document.getElementById("cache-status");
+    const storageEstimateEl = document.getElementById("storage-estimate");
     const detectedThreads = Math.max(1, Math.min(12, navigator.hardwareConcurrency || 4));
+    const demoCacheName = "embeddings-browser-demo-v1";
 
     let runCount = 0;
     let hasRows = false;
@@ -175,6 +203,61 @@
         return "/snowflake_wasm_short8.txt";
       }
       return "/snowflake_wasm_batch.txt";
+    }
+
+    function bundleAssets(buildDir) {
+      return [
+        "/scripts/wasm_bench_page.html",
+        "/demo/browser-wasm/index.html",
+        "/demo/browser-wasm/sw.js",
+        `/${buildDir}/embedding_wasm_model_bench.js`,
+        `/${buildDir}/embedding_wasm_model_bench.wasm`,
+        `/${buildDir}/embedding_wasm_model_bench.data`,
+      ];
+    }
+
+    async function updateStorageEstimate() {
+      if (!navigator.storage || !navigator.storage.estimate) {
+        storageEstimateEl.textContent = "Storage estimate unavailable.";
+        return;
+      }
+      const estimate = await navigator.storage.estimate();
+      const usageMB = ((estimate.usage || 0) / (1024 * 1024)).toFixed(1);
+      const quotaMB = ((estimate.quota || 0) / (1024 * 1024)).toFixed(1);
+      storageEstimateEl.textContent = `Browser storage: ${usageMB} MiB used / ${quotaMB} MiB quota.`;
+    }
+
+    async function cacheBundle(buildDir) {
+      cacheStatusEl.textContent = `Caching ${buildDir}...`;
+      const cache = await caches.open(demoCacheName);
+      for (const asset of bundleAssets(buildDir)) {
+        const response = await fetch(asset, { cache: "reload" });
+        if (!response.ok) {
+          throw new Error(`failed to cache ${asset}: ${response.status}`);
+        }
+        await cache.put(asset, response.clone());
+      }
+      cacheStatusEl.textContent = `Cached ${buildDir}.`;
+      await updateStorageEstimate();
+    }
+
+    async function clearBundleCache() {
+      await caches.delete(demoCacheName);
+      cacheStatusEl.textContent = "Cache cleared.";
+      await updateStorageEstimate();
+    }
+
+    async function registerServiceWorker() {
+      if (!("serviceWorker" in navigator)) {
+        cacheStatusEl.textContent = "Service worker not supported in this browser.";
+        return;
+      }
+      try {
+        await navigator.serviceWorker.register("/demo/browser-wasm/sw.js", { scope: "/" });
+        cacheStatusEl.textContent = "Service worker ready. Cache a bundle to reuse it offline.";
+      } catch (error) {
+        cacheStatusEl.textContent = `Service worker failed: ${error.message}`;
+      }
     }
 
     function runBench(buildDir, label, options = {}) {
@@ -226,6 +309,22 @@
       frame.removeAttribute("src");
     });
 
+    document.getElementById("cache-build-btn").addEventListener("click", async () => {
+      try {
+        await cacheBundle(cacheBuildEl.value);
+      } catch (error) {
+        cacheStatusEl.textContent = `Cache failed: ${error.message}`;
+      }
+    });
+
+    document.getElementById("clear-cache-btn").addEventListener("click", async () => {
+      try {
+        await clearBundleCache();
+      } catch (error) {
+        cacheStatusEl.textContent = `Clear failed: ${error.message}`;
+      }
+    });
+
     window.addEventListener("message", (event) => {
       const data = event.data || {};
       if (data.type !== "bench-result") {
@@ -245,6 +344,9 @@
         logEl.textContent = String(data.result);
       }
     });
+
+    registerServiceWorker();
+    updateStorageEstimate();
   </script>
 </body>
 </html>

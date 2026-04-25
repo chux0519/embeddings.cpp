@@ -14,6 +14,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         self.send_header("Cross-Origin-Resource-Policy", "cross-origin")
+        self.send_header("Service-Worker-Allowed", "/")
         super().end_headers()
 
 
