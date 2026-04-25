@@ -1,4 +1,4 @@
-# @embeddings-cpp/snowflake-web
+# @embeddings-cpp/web
 
 Browser-first Snowflake embedding package for
 `Snowflake/snowflake-arctic-embed-m-v2.0`.
@@ -14,7 +14,7 @@ Current status:
 Minimal usage:
 
 ```ts
-import { createSnowflakeEmbedder } from "@embeddings-cpp/snowflake-web";
+import { createSnowflakeEmbedder } from "@embeddings-cpp/web";
 
 const embedder = await createSnowflakeEmbedder({
   modelUrl:

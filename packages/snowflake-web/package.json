@@ -1,5 +1,5 @@
 {
-  "name": "@embeddings-cpp/snowflake-web",
+  "name": "@embeddings-cpp/web",
   "version": "0.0.0",
   "private": true,
   "description": "Browser-first Snowflake embedding client design scaffold for embeddings.cpp",

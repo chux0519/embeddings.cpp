@@ -80,7 +80,7 @@ function joinUrl(base: string, path: string): string {
 
 function ensureBrowser(): void {
   if (typeof window === "undefined" || typeof document === "undefined") {
-    throw new Error("@embeddings-cpp/snowflake-web is browser-only");
+    throw new Error("@embeddings-cpp/web is browser-only");
   }
 }
 

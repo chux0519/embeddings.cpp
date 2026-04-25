@@ -21,7 +21,7 @@ loaded from URLs and cached in the browser.
 
 Suggested package name:
 
-- `@embeddings-cpp/snowflake-web`
+- `@embeddings-cpp/web`
 
 Version 1 scope:
 
@@ -43,7 +43,7 @@ Out of scope for v1:
 The public API should stay narrow:
 
 ```ts
-import { createSnowflakeEmbedder } from "@embeddings-cpp/snowflake-web";
+import { createSnowflakeEmbedder } from "@embeddings-cpp/web";
 
 const embedder = await createSnowflakeEmbedder({
   modelUrl:

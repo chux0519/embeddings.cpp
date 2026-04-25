@@ -19,7 +19,7 @@ function joinUrl(base, path) {
 }
 function ensureBrowser() {
     if (typeof window === "undefined" || typeof document === "undefined") {
-        throw new Error("@embeddings-cpp/snowflake-web is browser-only");
+        throw new Error("@embeddings-cpp/web is browser-only");
     }
 }
 async function detectRuntime(preferred) {
