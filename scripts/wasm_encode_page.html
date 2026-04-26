@@ -77,9 +77,44 @@
         if (!response.ok) {
           throw new Error(`failed to fetch ${url}: ${response.status}`);
         }
+        const totalHeader = response.headers.get("content-length");
+        const total = totalHeader ? parseInt(totalHeader, 10) : null;
+        if (response.body) {
+          const reader = response.body.getReader();
+          const chunks = [];
+          let loaded = 0;
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+              break;
+            }
+            if (!value) {
+              continue;
+            }
+            chunks.push(value);
+            loaded += value.byteLength;
+            const loadedMiB = (loaded / (1024 * 1024)).toFixed(2);
+            const totalMiB = total ? (total / (1024 * 1024)).toFixed(2) : null;
+            const percent = total ? ((loaded / total) * 100).toFixed(1) : null;
+            postStatus(
+              "fetch-progress",
+              `${url} ${loadedMiB} MiB${totalMiB ? ` / ${totalMiB} MiB` : ""}${percent ? ` (${percent}%)` : ""}`,
+            );
+          }
+          const bytes = new Uint8Array(loaded);
+          let offset = 0;
+          for (const chunk of chunks) {
+            bytes.set(chunk, offset);
+            offset += chunk.byteLength;
+          }
+          await cache.put(cacheKey, new Response(bytes, { headers: { "Content-Type": response.headers.get("content-type") || "application/octet-stream" } }));
+          postStatus("fetch-ready", url);
+          return bytes;
+        }
         await cache.put(cacheKey, response.clone());
+        const bytes = new Uint8Array(await response.arrayBuffer());
         postStatus("fetch-ready", url);
-        return new Uint8Array(await response.arrayBuffer());
+        return bytes;
       }
 
       function ensureDir(path) {

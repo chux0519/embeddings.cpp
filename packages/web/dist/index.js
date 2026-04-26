@@ -20,6 +20,37 @@ function nowMs() {
     }
     return Date.now();
 }
+async function readResponseBytes(response, onProgress) {
+    if (!response.body) {
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        onProgress?.(bytes.byteLength, bytes.byteLength);
+        return bytes;
+    }
+    const totalHeader = response.headers.get("content-length");
+    const total = totalHeader ? Number.parseInt(totalHeader, 10) : null;
+    const reader = response.body.getReader();
+    const chunks = [];
+    let loaded = 0;
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+            break;
+        }
+        if (!value) {
+            continue;
+        }
+        chunks.push(value);
+        loaded += value.byteLength;
+        onProgress?.(loaded, Number.isFinite(total) ? total : null);
+    }
+    const out = new Uint8Array(loaded);
+    let offset = 0;
+    for (const chunk of chunks) {
+        out.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return out;
+}
 function joinUrl(base, path) {
     return new URL(path, base.endsWith("/") ? base : `${base}/`).toString();
 }
@@ -49,22 +80,30 @@ async function detectRuntime(preferred) {
     return "wasm";
 }
 let tokenizerScriptPromise = null;
-function loadScriptOnce(src) {
+function loadScriptOnce(sourceUrl, scriptText) {
     if (tokenizerScriptPromise) {
         return tokenizerScriptPromise;
     }
     tokenizerScriptPromise = new Promise((resolve, reject) => {
-        const existing = document.querySelector(`script[data-snowflake-tokenizers="1"][src="${src}"]`);
+        const existing = document.querySelector(`script[data-snowflake-tokenizers="1"]`);
         if (existing) {
             resolve();
             return;
         }
         const script = document.createElement("script");
-        script.src = src;
-        script.async = true;
+        const blob = new Blob([scriptText], { type: "application/javascript" });
+        const blobUrl = URL.createObjectURL(blob);
+        script.src = blobUrl;
+        script.async = false;
         script.dataset.snowflakeTokenizers = "1";
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error(`failed to load tokenizer script: ${src}`));
+        script.onload = () => {
+            URL.revokeObjectURL(blobUrl);
+            resolve();
+        };
+        script.onerror = () => {
+            URL.revokeObjectURL(blobUrl);
+            reject(new Error(`failed to evaluate tokenizer script: ${sourceUrl}`));
+        };
         document.head.appendChild(script);
     });
     return tokenizerScriptPromise;
@@ -101,6 +140,17 @@ class BrowserSnowflakeEmbedder {
     }
     emit(stage, detail) {
         this.options.onStatus({ stage, detail, runtime: this.runtime, atMs: nowMs() });
+    }
+    progressDetail(url, loaded, total) {
+        const percent = total && total > 0 ? ((loaded / total) * 100).toFixed(1) : null;
+        const parts = [url, `${(loaded / (1024 * 1024)).toFixed(2)} MiB`];
+        if (total && total > 0) {
+            parts.push(`/ ${(total / (1024 * 1024)).toFixed(2)} MiB`);
+        }
+        if (percent) {
+            parts.push(`(${percent}%)`);
+        }
+        return parts.join(" ");
     }
     info() {
         return {
@@ -206,7 +256,17 @@ class BrowserSnowflakeEmbedder {
             return this.tokenizer;
         }
         this.emit("tokenizer-script-loading", this.tokenizerScriptUrl());
-        await loadScriptOnce(this.tokenizerScriptUrl());
+        const scriptResponse = await fetchMaybeCached(this.tokenizerScriptUrl(), this.options.cache, "tokenizer-script");
+        if (!scriptResponse.ok) {
+            throw new Error(`failed to fetch tokenizer script: ${scriptResponse.status}`);
+        }
+        const scriptBytes = await readResponseBytes(scriptResponse, (loaded, total) => {
+            this.emit("tokenizer-script-progress", this.progressDetail(this.tokenizerScriptUrl(), loaded, total));
+        });
+        this.emit("tokenizer-script-fetched");
+        const scriptText = new TextDecoder().decode(scriptBytes);
+        this.emit("tokenizer-script-injecting");
+        await loadScriptOnce(this.tokenizerScriptUrl(), scriptText);
         this.emit("tokenizer-script-ready");
         this.emit("tokenizer-json-loading", this.tokenizerJsonUrl());
         const response = await fetchMaybeCached(this.tokenizerJsonUrl(), this.options.cache, "tokenizer");
@@ -217,10 +277,13 @@ class BrowserSnowflakeEmbedder {
         if (!tokenizers?.Tokenizer) {
             throw new Error("web-tokenizers runtime did not initialize");
         }
+        const jsonBytes = await readResponseBytes(response, (loaded, total) => {
+            this.emit("tokenizer-json-progress", this.progressDetail(this.tokenizerJsonUrl(), loaded, total));
+        });
         this.emit("tokenizer-json-ready");
-        const json = await response.arrayBuffer();
         this.emit("tokenizer-fromjson-start");
-        this.tokenizer = await tokenizers.Tokenizer.fromJSON(json);
+        const jsonBuffer = jsonBytes.slice().buffer;
+        this.tokenizer = await tokenizers.Tokenizer.fromJSON(jsonBuffer);
         this.emit("tokenizer-fromjson-ready");
         this.emit("tokenizer-ready");
         return this.tokenizer;
