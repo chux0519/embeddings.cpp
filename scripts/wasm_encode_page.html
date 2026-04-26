@@ -63,17 +63,22 @@
       }
 
       async function fetchCachedBytes(url, cacheKey) {
-        const cache = await caches.open(fileCacheName);
-        const cached = await cache.match(cacheKey);
-        if (cached) {
-          append(`[cache-hit] ${cacheKey}`);
-          postStatus("cache-hit", cacheKey);
-          return new Uint8Array(await cached.arrayBuffer());
+        const cacheApi = typeof caches !== "undefined" ? caches : null;
+        const cache = cacheApi ? await cacheApi.open(fileCacheName) : null;
+        if (cache) {
+          const cached = await cache.match(cacheKey);
+          if (cached) {
+            append(`[cache-hit] ${cacheKey}`);
+            postStatus("cache-hit", cacheKey);
+            return new Uint8Array(await cached.arrayBuffer());
+          }
+        } else {
+          postStatus("cache-unavailable", url);
         }
 
         append(`[fetch] ${url}`);
         postStatus("fetch-start", url);
-        const response = await fetch(url, { cache: "reload" });
+        const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`failed to fetch ${url}: ${response.status}`);
         }
@@ -107,11 +112,15 @@
             bytes.set(chunk, offset);
             offset += chunk.byteLength;
           }
-          await cache.put(cacheKey, new Response(bytes, { headers: { "Content-Type": response.headers.get("content-type") || "application/octet-stream" } }));
+          if (cache) {
+            await cache.put(cacheKey, new Response(bytes, { headers: { "Content-Type": response.headers.get("content-type") || "application/octet-stream" } }));
+          }
           postStatus("fetch-ready", url);
           return bytes;
         }
-        await cache.put(cacheKey, response.clone());
+        if (cache) {
+          await cache.put(cacheKey, response.clone());
+        }
         const bytes = new Uint8Array(await response.arrayBuffer());
         postStatus("fetch-ready", url);
         return bytes;

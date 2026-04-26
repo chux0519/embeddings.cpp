@@ -113,7 +113,7 @@ function fileCacheKey(kind, url) {
 }
 async function fetchMaybeCached(url, cacheEnabled, kind) {
     if (!cacheEnabled || typeof caches === "undefined") {
-        return fetch(url, { cache: "reload" });
+        return fetch(url);
     }
     const cache = await caches.open(DEFAULT_FILE_CACHE);
     const key = fileCacheKey(kind, url);
@@ -121,7 +121,7 @@ async function fetchMaybeCached(url, cacheEnabled, kind) {
     if (cached) {
         return cached;
     }
-    const response = await fetch(url, { cache: "reload" });
+    const response = await fetch(url);
     if (!response.ok) {
         throw new Error(`failed to fetch ${url}: ${response.status}`);
     }

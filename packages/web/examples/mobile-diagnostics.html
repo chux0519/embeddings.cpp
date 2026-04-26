@@ -189,6 +189,10 @@
     let embedderKey = "";
     let lastReport = null;
 
+    function tailStages(limit = 12) {
+      return statusTrail.slice(-limit).map(({ at, stage, detail }) => ({ at, stage, detail }));
+    }
+
     function pushStage(stage, detail = "", atMs = performance.now()) {
       statusTrail.push({
         at: new Date().toISOString(),
@@ -257,14 +261,26 @@
     }
 
     function renderReport(report) {
-      lastReport = report;
+      const compactReport = {
+        mode: report.mode,
+        status: report.status,
+        runtime: report.runtime,
+        elapsed_ms: report.elapsed_ms ?? null,
+        token_count: report.token_count ?? null,
+        dimension: report.dimension ?? null,
+        cross_origin_isolated: report.cross_origin_isolated,
+        webgpu_present: report.webgpu_present,
+        hardware_concurrency: report.hardware_concurrency,
+        stage_timings: summarizeTimings(),
+        last_statuses: tailStages(),
+      };
+      lastReport = compactReport;
       runtimeEl.textContent = report.runtime || "-";
       elapsedEl.textContent = report.elapsed_ms == null ? "-" : `${report.elapsed_ms.toFixed(2)} ms`;
       tokenCountEl.textContent = report.token_count == null ? "-" : String(report.token_count);
       dimensionEl.textContent = report.dimension == null ? "-" : String(report.dimension);
       previewEl.textContent = report.preview || "";
-      report.stage_timings = summarizeTimings();
-      reportEl.textContent = JSON.stringify(report, null, 2);
+      reportEl.textContent = JSON.stringify(compactReport, null, 2);
     }
 
     async function detectOnly() {
@@ -317,7 +333,20 @@
       if (!lastReport) {
         return;
       }
-      await navigator.clipboard.writeText(JSON.stringify(lastReport, null, 2));
+      const text = JSON.stringify(lastReport, null, 2);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const helper = document.createElement("textarea");
+        helper.value = text;
+        helper.setAttribute("readonly", "");
+        helper.style.position = "fixed";
+        helper.style.left = "-9999px";
+        document.body.appendChild(helper);
+        helper.select();
+        document.execCommand("copy");
+        document.body.removeChild(helper);
+      }
       statusEl.textContent = "Copied";
     }
 
