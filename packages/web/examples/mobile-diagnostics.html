@@ -90,6 +90,10 @@
       color: #fff;
       cursor: pointer;
     }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
     button.secondary {
       background: #1d4ed8;
     }
@@ -182,12 +186,28 @@
     const statusTrail = [];
     const modelUrlEl = document.getElementById("model-url");
     const inputEl = document.getElementById("input-text");
+    const detectBtn = document.getElementById("detect-btn");
+    const runBtn = document.getElementById("run-btn");
+    const copyBtn = document.getElementById("copy-btn");
 
     modelUrlEl.value = `${window.location.origin}/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`;
 
     let embedder = null;
     let embedderKey = "";
     let lastReport = null;
+    let busy = false;
+
+    function setBusy(nextBusy, statusText = null) {
+      busy = nextBusy;
+      detectBtn.disabled = nextBusy;
+      runBtn.disabled = nextBusy;
+      copyBtn.disabled = nextBusy || !lastReport;
+      modelUrlEl.disabled = nextBusy;
+      inputEl.disabled = nextBusy;
+      if (statusText != null) {
+        statusEl.textContent = statusText;
+      }
+    }
 
     function tailStages(limit = 12) {
       return statusTrail.slice(-limit).map(({ at, stage, detail }) => ({ at, stage, detail }));
@@ -282,6 +302,7 @@
       dimensionEl.textContent = report.dimension == null ? "-" : String(report.dimension);
       previewEl.textContent = report.preview || "";
       reportEl.textContent = JSON.stringify(compactReport, null, 2);
+      copyBtn.disabled = busy || !lastReport;
     }
 
     async function detectOnly() {
@@ -351,40 +372,42 @@
       statusEl.textContent = "Copied";
     }
 
-    document.getElementById("detect-btn").addEventListener("click", async () => {
+    async function runWithBusy(label, fn) {
+      if (busy) {
+        return;
+      }
+      setBusy(true, label);
       try {
-        await detectOnly();
+        await fn();
       } catch (error) {
         statusEl.textContent = `Failed: ${error.message || error}`;
+      } finally {
+        setBusy(false);
       }
+    }
+
+    detectBtn.addEventListener("click", async () => {
+      await runWithBusy("Detecting", detectOnly);
     });
 
-    document.getElementById("run-btn").addEventListener("click", async () => {
-      try {
-        await runSmoke();
-      } catch (error) {
-        statusEl.textContent = `Failed: ${error.message || error}`;
-      }
+    runBtn.addEventListener("click", async () => {
+      await runWithBusy("Encoding", runSmoke);
     });
 
-    document.getElementById("copy-btn").addEventListener("click", async () => {
-      try {
-        await copyReport();
-      } catch (error) {
-        statusEl.textContent = `Failed: ${error.message || error}`;
+    copyBtn.addEventListener("click", async () => {
+      await runWithBusy("Copying", copyReport);
+      if (!busy && lastReport) {
+        statusEl.textContent = "Copied";
       }
     });
 
     setStaticFields();
+    setBusy(false);
 
     if (new URLSearchParams(window.location.search).get("autorun") === "1") {
-      runSmoke().catch((error) => {
-        statusEl.textContent = `Failed: ${error.message || error}`;
-      });
+      runWithBusy("Encoding", runSmoke);
     } else {
-      detectOnly().catch((error) => {
-        statusEl.textContent = `Failed: ${error.message || error}`;
-      });
+      runWithBusy("Detecting", detectOnly);
     }
   </script>
 </body>
