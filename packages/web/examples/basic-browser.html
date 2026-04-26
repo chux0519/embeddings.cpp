@@ -112,6 +112,7 @@
     modelUrlEl.value = `${window.location.origin}/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`;
 
     let embedder = null;
+    let stageText = "";
 
     async function getEmbedder() {
       if (!embedder) {
@@ -119,6 +120,10 @@
           modelUrl: modelUrlEl.value.trim(),
           runtimeBaseUrl: window.location.origin,
           cache: true,
+          onStatus(event) {
+            stageText = event.detail ? `${event.stage}: ${event.detail}` : event.stage;
+            statusEl.textContent = stageText;
+          },
         });
       }
       return embedder;

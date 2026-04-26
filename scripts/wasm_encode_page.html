@@ -28,6 +28,10 @@
       let jsonBuffer = [];
       let collecting = false;
 
+      function postStatus(stage, detail) {
+        window.parent.postMessage({ type: "encode-status", stage, detail }, "*");
+      }
+
       function append(line) {
         log.textContent += line + "\n";
       }
@@ -63,15 +67,18 @@
         const cached = await cache.match(cacheKey);
         if (cached) {
           append(`[cache-hit] ${cacheKey}`);
+          postStatus("cache-hit", cacheKey);
           return new Uint8Array(await cached.arrayBuffer());
         }
 
         append(`[fetch] ${url}`);
+        postStatus("fetch-start", url);
         const response = await fetch(url, { cache: "reload" });
         if (!response.ok) {
           throw new Error(`failed to fetch ${url}: ${response.status}`);
         }
         await cache.put(cacheKey, response.clone());
+        postStatus("fetch-ready", url);
         return new Uint8Array(await response.arrayBuffer());
       }
 
@@ -105,6 +112,7 @@
             try {
               const result = JSON.parse(text);
               status.textContent = "done";
+              postStatus("encode-result-ready");
               window.parent.postMessage({ type: "encode-result", result, error: null }, "*");
             } catch (err) {
               const error = "failed to parse result: " + err.message;
@@ -119,10 +127,12 @@
         window.addEventListener("message", (event) => {
           const data = event.data || {};
           if (data.type === "encode-request") {
+            postStatus("encode-request-received");
             resolve(data);
           }
         }, { once: true });
         status.textContent = "waiting-request";
+        postStatus("waiting-request");
       });
 
       const files = [];
@@ -138,6 +148,7 @@
 
       const preparedFiles = [];
       for (const file of files) {
+        postStatus("file-prepare", file.path);
         const bytes = await fetchCachedBytes(file.url, file.cacheKey);
         preparedFiles.push({ path: file.path, bytes });
       }
@@ -150,6 +161,7 @@
           "--pooling", pooling,
         ],
         preRun: [function () {
+          postStatus("pre-run");
           for (const file of preparedFiles) {
             const slash = file.path.lastIndexOf("/");
             if (slash > 0) {
@@ -158,6 +170,7 @@
             FS.writeFile(file.path, file.bytes);
             const analyzed = FS.analyzePath(file.path);
             append(`[preRun] ${file.path} exists=${analyzed.exists} object=${analyzed.object ? analyzed.object.mode : "null"}`);
+            postStatus("file-ready", file.path);
           }
         }],
         locateFile: function (path) {
@@ -172,10 +185,12 @@
         },
         setStatus: function (text) {
           status.textContent = text;
+          postStatus("module-status", text);
         },
         onAbort: function (reason) {
           const error = String(reason);
           status.textContent = "abort";
+          postStatus("abort", error);
           window.parent.postMessage({ type: "encode-result", result: null, error }, "*");
         }
       };
@@ -191,9 +206,14 @@
 
       const script = document.createElement("script");
       script.src = "/" + buildDir + "/embedding_wasm_model_encode.js";
+      postStatus("runtime-script-loading", script.src);
+      script.onload = function () {
+        postStatus("runtime-script-ready", script.src);
+      };
       script.onerror = function () {
         const error = "failed to load encode script";
         status.textContent = "load-error";
+        postStatus("load-error", error);
         window.parent.postMessage({ type: "encode-result", result: null, error }, "*");
       };
       document.body.appendChild(script);
@@ -203,6 +223,7 @@
       const message = String(err && err.message ? err.message : err);
       status.textContent = "prepare-error";
       log.textContent += `[prepare-error] ${message}\n`;
+      window.parent.postMessage({ type: "encode-status", stage: "prepare-error", detail: message }, "*");
       window.parent.postMessage({ type: "encode-result", result: null, error: message }, "*");
     });
   </script>

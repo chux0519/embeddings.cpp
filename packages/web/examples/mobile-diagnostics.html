@@ -173,6 +173,7 @@
     const uaEl = document.getElementById("ua");
     const previewEl = document.getElementById("preview");
     const reportEl = document.getElementById("report");
+    const statusTrail = [];
     const modelUrlEl = document.getElementById("model-url");
     const inputEl = document.getElementById("input-text");
 
@@ -181,6 +182,15 @@
     let embedder = null;
     let embedderKey = "";
     let lastReport = null;
+
+    function pushStage(stage, detail = "") {
+      statusTrail.push({
+        at: new Date().toISOString(),
+        stage,
+        detail,
+      });
+      statusEl.textContent = detail ? `${stage}: ${detail}` : stage;
+    }
 
     function setStaticFields() {
       isolatedEl.textContent = String(window.crossOriginIsolated);
@@ -204,6 +214,9 @@
         modelUrl: modelUrlEl.value.trim(),
         runtimeBaseUrl: window.location.origin,
         cache: true,
+        onStatus(event) {
+          pushStage(event.stage, event.detail || event.runtime || "");
+        },
       });
       embedderKey = key;
       return embedder;
@@ -220,6 +233,7 @@
     }
 
     async function detectOnly() {
+      statusTrail.length = 0;
       statusEl.textContent = "Detecting";
       const client = await getEmbedder();
       const info = client.info();
@@ -232,10 +246,12 @@
         webgpu_present: Boolean(navigator.gpu),
         hardware_concurrency: navigator.hardwareConcurrency || null,
         user_agent: navigator.userAgent,
+        status_trail: statusTrail,
       });
     }
 
     async function runSmoke() {
+      statusTrail.length = 0;
       const text = inputEl.value.trim();
       if (!text) {
         throw new Error("input text is empty");
@@ -258,6 +274,7 @@
         webgpu_present: Boolean(navigator.gpu),
         hardware_concurrency: navigator.hardwareConcurrency || null,
         user_agent: navigator.userAgent,
+        status_trail: statusTrail,
       });
     }
 

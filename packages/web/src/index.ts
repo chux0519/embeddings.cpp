@@ -1,6 +1,12 @@
 export type SnowflakeRuntime = "auto" | "webgpu" | "pthread" | "wasm";
 type ResolvedRuntime = Exclude<SnowflakeRuntime, "auto">;
 
+export interface SnowflakeStatusEvent {
+  stage: string;
+  detail?: string;
+  runtime?: ResolvedRuntime;
+}
+
 export interface SnowflakeEmbedderOptions {
   modelUrl: string;
   runtime?: SnowflakeRuntime;
@@ -9,6 +15,7 @@ export interface SnowflakeEmbedderOptions {
   tokenizerScriptUrl?: string;
   threads?: number;
   cache?: boolean;
+  onStatus?: (event: SnowflakeStatusEvent) => void;
 }
 
 export interface SnowflakeEmbedding {
@@ -175,6 +182,10 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     this.runtime = runtime;
   }
 
+  private emit(stage: string, detail?: string): void {
+    this.options.onStatus({ stage, detail, runtime: this.runtime });
+  }
+
   info(): SnowflakeEmbedderInfo {
     return {
       modelUrl: this.options.modelUrl,
@@ -185,8 +196,10 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
   }
 
   async prefetch(): Promise<void> {
+    this.emit("prefetch-start");
     await this.ensureTokenizer();
     await this.prefetchFiles();
+    this.emit("prefetch-ready");
   }
 
   async embed(text: string): Promise<SnowflakeEmbedding> {
@@ -200,6 +213,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     }
 
     return this.enqueue(async () => {
+      this.emit("tokenizer-encode-start");
       const tokenizer = await this.ensureTokenizer();
       const lines: string[] = [];
       const tokenCounts: number[] = [];
@@ -214,11 +228,13 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
         lines.push(this.encodeBatchLine(ids));
       }
 
+      this.emit("tokenizer-encode-ready", `${texts.length} item(s)`);
       const result = await this.runEncode(lines.join("\n"));
       if (!result.vectors || result.vectors.length !== texts.length) {
         throw new Error("unexpected embedding result shape");
       }
 
+      this.emit("embed-done", `${result.vectors.length} item(s)`);
       return result.vectors.map((vector, index) => ({
         vector: Float32Array.from(vector),
         tokenCount: tokenCounts[index],
@@ -235,6 +251,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
       this.iframe.remove();
       this.iframe = null;
     }
+    this.emit("disposed");
   }
 
   private async enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -287,10 +304,14 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
 
   private async ensureTokenizer(): Promise<TokenizerLike> {
     if (this.tokenizer) {
+      this.emit("tokenizer-ready", "reused");
       return this.tokenizer;
     }
 
+    this.emit("tokenizer-script-loading", this.tokenizerScriptUrl());
     await loadScriptOnce(this.tokenizerScriptUrl());
+    this.emit("tokenizer-script-ready");
+    this.emit("tokenizer-json-loading", this.tokenizerJsonUrl());
     const response = await fetchMaybeCached(this.tokenizerJsonUrl(), this.options.cache, "tokenizer");
     if (!response.ok) {
       throw new Error(`failed to load tokenizer JSON: ${response.status}`);
@@ -301,6 +322,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     }
     const json = await response.arrayBuffer();
     this.tokenizer = await tokenizers.Tokenizer.fromJSON(json);
+    this.emit("tokenizer-ready");
     return this.tokenizer;
   }
 
@@ -316,6 +338,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
 
     for (const asset of assets) {
       const kind = asset === this.options.modelUrl ? "model" : "asset";
+      this.emit("prefetch-asset", asset);
       const response = await fetchMaybeCached(asset, this.options.cache, kind);
       if (!response.ok) {
         throw new Error(`failed to prefetch ${asset}: ${response.status}`);
@@ -331,6 +354,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
 
   private async ensureIframe(): Promise<HTMLIFrameElement> {
     if (!this.iframe) {
+      this.emit("iframe-create");
       this.iframe = document.createElement("iframe");
       this.iframe.hidden = true;
       this.iframe.title = "snowflake-web-runner";
@@ -339,10 +363,12 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
 
     const targetUrl = this.iframeUrl();
     if (this.iframe.src !== targetUrl) {
+      this.emit("runtime-page-loading", targetUrl);
       this.iframe.src = targetUrl;
       await new Promise<void>((resolve) => {
         this.iframe!.onload = () => resolve();
       });
+      this.emit("runtime-page-ready");
     }
 
     return this.iframe;
@@ -351,14 +377,24 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
   private async runEncode(batchLine: string): Promise<EncodeResultPayload> {
     const iframe = await this.ensureIframe();
     return new Promise<EncodeResultPayload>((resolve, reject) => {
+      const self = this;
       const timeout = window.setTimeout(() => {
         window.removeEventListener("message", onMessage);
         reject(new Error("encode request timed out"));
       }, 120000);
 
       function onMessage(event: MessageEvent): void {
-        const data = event.data as { type?: string; result?: EncodeResultPayload; error?: string } | undefined;
-        if (!data || data.type !== "encode-result") {
+        const data = event.data as
+          | { type?: string; result?: EncodeResultPayload; error?: string; stage?: string; detail?: string }
+          | undefined;
+        if (!data) {
+          return;
+        }
+        if (data.type === "encode-status") {
+          self.emit(data.stage || "encode-status", data.detail);
+          return;
+        }
+        if (data.type !== "encode-result") {
           return;
         }
         window.clearTimeout(timeout);
@@ -371,6 +407,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
       }
 
       window.addEventListener("message", onMessage);
+      this.emit("encode-request-sent");
       iframe.contentWindow?.postMessage({ type: "encode-request", batchLine }, "*");
     });
   }
@@ -396,9 +433,11 @@ export async function createSnowflakeEmbedder(
     tokenizerScriptUrl,
     threads: Math.max(1, Math.min(12, detectedThreads)),
     cache: options.cache ?? true,
+    onStatus: options.onStatus ?? (() => {}),
   };
 
   const runtime = await detectRuntime(resolved.runtime);
+  resolved.onStatus({ stage: "runtime-selected", runtime, detail: runtime });
   return new BrowserSnowflakeEmbedder(resolved, runtime);
 }
 

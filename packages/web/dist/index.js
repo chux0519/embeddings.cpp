@@ -93,6 +93,9 @@ class BrowserSnowflakeEmbedder {
         this.options = options;
         this.runtime = runtime;
     }
+    emit(stage, detail) {
+        this.options.onStatus({ stage, detail, runtime: this.runtime });
+    }
     info() {
         return {
             modelUrl: this.options.modelUrl,
@@ -102,8 +105,10 @@ class BrowserSnowflakeEmbedder {
         };
     }
     async prefetch() {
+        this.emit("prefetch-start");
         await this.ensureTokenizer();
         await this.prefetchFiles();
+        this.emit("prefetch-ready");
     }
     async embed(text) {
         const [result] = await this.embedAll([text]);
@@ -114,6 +119,7 @@ class BrowserSnowflakeEmbedder {
             return [];
         }
         return this.enqueue(async () => {
+            this.emit("tokenizer-encode-start");
             const tokenizer = await this.ensureTokenizer();
             const lines = [];
             const tokenCounts = [];
@@ -126,10 +132,12 @@ class BrowserSnowflakeEmbedder {
                 tokenCounts.push(ids.length);
                 lines.push(this.encodeBatchLine(ids));
             }
+            this.emit("tokenizer-encode-ready", `${texts.length} item(s)`);
             const result = await this.runEncode(lines.join("\n"));
             if (!result.vectors || result.vectors.length !== texts.length) {
                 throw new Error("unexpected embedding result shape");
             }
+            this.emit("embed-done", `${result.vectors.length} item(s)`);
             return result.vectors.map((vector, index) => ({
                 vector: Float32Array.from(vector),
                 tokenCount: tokenCounts[index],
@@ -144,6 +152,7 @@ class BrowserSnowflakeEmbedder {
             this.iframe.remove();
             this.iframe = null;
         }
+        this.emit("disposed");
     }
     async enqueue(fn) {
         const previous = this.queue;
@@ -187,9 +196,13 @@ class BrowserSnowflakeEmbedder {
     }
     async ensureTokenizer() {
         if (this.tokenizer) {
+            this.emit("tokenizer-ready", "reused");
             return this.tokenizer;
         }
+        this.emit("tokenizer-script-loading", this.tokenizerScriptUrl());
         await loadScriptOnce(this.tokenizerScriptUrl());
+        this.emit("tokenizer-script-ready");
+        this.emit("tokenizer-json-loading", this.tokenizerJsonUrl());
         const response = await fetchMaybeCached(this.tokenizerJsonUrl(), this.options.cache, "tokenizer");
         if (!response.ok) {
             throw new Error(`failed to load tokenizer JSON: ${response.status}`);
@@ -200,6 +213,7 @@ class BrowserSnowflakeEmbedder {
         }
         const json = await response.arrayBuffer();
         this.tokenizer = await tokenizers.Tokenizer.fromJSON(json);
+        this.emit("tokenizer-ready");
         return this.tokenizer;
     }
     async prefetchFiles() {
@@ -213,6 +227,7 @@ class BrowserSnowflakeEmbedder {
         ];
         for (const asset of assets) {
             const kind = asset === this.options.modelUrl ? "model" : "asset";
+            this.emit("prefetch-asset", asset);
             const response = await fetchMaybeCached(asset, this.options.cache, kind);
             if (!response.ok) {
                 throw new Error(`failed to prefetch ${asset}: ${response.status}`);
@@ -226,6 +241,7 @@ class BrowserSnowflakeEmbedder {
     }
     async ensureIframe() {
         if (!this.iframe) {
+            this.emit("iframe-create");
             this.iframe = document.createElement("iframe");
             this.iframe.hidden = true;
             this.iframe.title = "snowflake-web-runner";
@@ -233,23 +249,33 @@ class BrowserSnowflakeEmbedder {
         }
         const targetUrl = this.iframeUrl();
         if (this.iframe.src !== targetUrl) {
+            this.emit("runtime-page-loading", targetUrl);
             this.iframe.src = targetUrl;
             await new Promise((resolve) => {
                 this.iframe.onload = () => resolve();
             });
+            this.emit("runtime-page-ready");
         }
         return this.iframe;
     }
     async runEncode(batchLine) {
         const iframe = await this.ensureIframe();
         return new Promise((resolve, reject) => {
+            const self = this;
             const timeout = window.setTimeout(() => {
                 window.removeEventListener("message", onMessage);
                 reject(new Error("encode request timed out"));
             }, 120000);
             function onMessage(event) {
                 const data = event.data;
-                if (!data || data.type !== "encode-result") {
+                if (!data) {
+                    return;
+                }
+                if (data.type === "encode-status") {
+                    self.emit(data.stage || "encode-status", data.detail);
+                    return;
+                }
+                if (data.type !== "encode-result") {
                     return;
                 }
                 window.clearTimeout(timeout);
@@ -261,6 +287,7 @@ class BrowserSnowflakeEmbedder {
                 resolve(data.result);
             }
             window.addEventListener("message", onMessage);
+            this.emit("encode-request-sent");
             iframe.contentWindow?.postMessage({ type: "encode-request", batchLine }, "*");
         });
     }
@@ -279,8 +306,10 @@ export async function createSnowflakeEmbedder(options) {
         tokenizerScriptUrl,
         threads: Math.max(1, Math.min(12, detectedThreads)),
         cache: options.cache ?? true,
+        onStatus: options.onStatus ?? (() => { }),
     };
     const runtime = await detectRuntime(resolved.runtime);
+    resolved.onStatus({ stage: "runtime-selected", runtime, detail: runtime });
     return new BrowserSnowflakeEmbedder(resolved, runtime);
 }
 export function createSnowflakeDefaults(overrides = {}) {
