@@ -225,6 +225,7 @@
         runtime_page_load_ms: durationMs("runtime-page-loading", "runtime-page-ready"),
         model_fetch_ms: durationMs("fetch-start", "fetch-ready"),
         encode_request_ms: durationMs("encode-request-sent", "encode-result-ready"),
+        model_idb_cache: firstStage("model-idb-hit") ? "hit" : firstStage("model-idb-ready") ? "stored" : firstStage("model-idb-miss") ? "miss" : null,
       };
       timingsEl.textContent = JSON.stringify(summary, null, 2);
       return summary;

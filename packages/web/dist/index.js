@@ -3,6 +3,8 @@ const DEFAULT_RUNTIME_BASE_PATH = "/";
 const DEFAULT_TOKENIZER_JSON_PATH = "/demo/browser-wasm/assets/snowflake-tokenizer.json";
 const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.js";
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
+const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
+const DEFAULT_MODEL_STORE = "files";
 const BUILD_DIRS = {
     wasm: "build-wasm-web-dyn",
     pthread: "build-wasm-web-pthread-dyn",
@@ -111,6 +113,68 @@ function loadScriptOnce(sourceUrl, scriptText) {
 function fileCacheKey(kind, url) {
     return `/__cache__/${kind}/${encodeURIComponent(url)}`;
 }
+function openModelDb() {
+    if (typeof indexedDB === "undefined") {
+        return Promise.resolve(null);
+    }
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DEFAULT_MODEL_DB, 1);
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(DEFAULT_MODEL_STORE)) {
+                db.createObjectStore(DEFAULT_MODEL_STORE);
+            }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error ?? new Error("failed to open model db"));
+    });
+}
+async function readModelCache(url) {
+    const db = await openModelDb();
+    if (!db) {
+        return null;
+    }
+    try {
+        return await new Promise((resolve, reject) => {
+            const tx = db.transaction(DEFAULT_MODEL_STORE, "readonly");
+            const store = tx.objectStore(DEFAULT_MODEL_STORE);
+            const req = store.get(url);
+            req.onsuccess = () => {
+                const value = req.result;
+                if (value instanceof ArrayBuffer) {
+                    resolve(new Uint8Array(value));
+                    return;
+                }
+                if (value?.buffer instanceof ArrayBuffer) {
+                    resolve(new Uint8Array(value.buffer));
+                    return;
+                }
+                resolve(null);
+            };
+            req.onerror = () => reject(req.error ?? new Error("failed to read model cache"));
+        });
+    }
+    finally {
+        db.close();
+    }
+}
+async function writeModelCache(url, bytes) {
+    const db = await openModelDb();
+    if (!db) {
+        return;
+    }
+    try {
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(DEFAULT_MODEL_STORE, "readwrite");
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error ?? new Error("failed to write model cache"));
+            tx.objectStore(DEFAULT_MODEL_STORE).put(bytes.buffer.slice(0), url);
+        });
+    }
+    finally {
+        db.close();
+    }
+}
 async function fetchMaybeCached(url, cacheEnabled, kind) {
     if (!cacheEnabled || typeof caches === "undefined") {
         return fetch(url);
@@ -151,6 +215,26 @@ class BrowserSnowflakeEmbedder {
             parts.push(`(${percent}%)`);
         }
         return parts.join(" ");
+    }
+    async prefetchModelToIndexedDb() {
+        if (!this.options.cache) {
+            return;
+        }
+        const cached = await readModelCache(this.options.modelUrl);
+        if (cached) {
+            this.emit("model-idb-hit", `${(cached.byteLength / (1024 * 1024)).toFixed(2)} MiB`);
+            return;
+        }
+        this.emit("model-idb-miss", this.options.modelUrl);
+        const response = await fetch(this.options.modelUrl);
+        if (!response.ok) {
+            throw new Error(`failed to prefetch model ${this.options.modelUrl}: ${response.status}`);
+        }
+        const bytes = await readResponseBytes(response, (loaded, total) => {
+            this.emit("model-idb-progress", this.progressDetail(this.options.modelUrl, loaded, total));
+        });
+        await writeModelCache(this.options.modelUrl, bytes);
+        this.emit("model-idb-ready", `${(bytes.byteLength / (1024 * 1024)).toFixed(2)} MiB`);
     }
     info() {
         return {
@@ -298,7 +382,11 @@ class BrowserSnowflakeEmbedder {
             this.options.modelUrl,
         ];
         for (const asset of assets) {
-            const kind = asset === this.options.modelUrl ? "model" : "asset";
+            if (asset === this.options.modelUrl) {
+                await this.prefetchModelToIndexedDb();
+                continue;
+            }
+            const kind = "asset";
             this.emit("prefetch-asset", asset);
             const response = await fetchMaybeCached(asset, this.options.cache, kind);
             if (!response.ok) {

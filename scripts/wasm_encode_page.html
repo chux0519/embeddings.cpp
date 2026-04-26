@@ -25,6 +25,8 @@
       const status = document.getElementById('status');
       const log = document.getElementById('log');
       const fileCacheName = "embeddings-browser-files-v1";
+      const modelDbName = "embeddings-browser-models-v1";
+      const modelStoreName = "files";
       let jsonBuffer = [];
       let collecting = false;
 
@@ -62,7 +64,79 @@
         return `/__cache__/${kind}/${encodeURIComponent(url)}`;
       }
 
+      function openModelDb() {
+        if (typeof indexedDB === "undefined") {
+          return Promise.resolve(null);
+        }
+        return new Promise((resolve, reject) => {
+          const request = indexedDB.open(modelDbName, 1);
+          request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(modelStoreName)) {
+              db.createObjectStore(modelStoreName);
+            }
+          };
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error || new Error("failed to open model db"));
+        });
+      }
+
+      async function readModelCache(url) {
+        const db = await openModelDb();
+        if (!db) {
+          return null;
+        }
+        try {
+          return await new Promise((resolve, reject) => {
+            const tx = db.transaction(modelStoreName, "readonly");
+            const req = tx.objectStore(modelStoreName).get(url);
+            req.onsuccess = () => {
+              const value = req.result;
+              if (value instanceof ArrayBuffer) {
+                resolve(new Uint8Array(value));
+                return;
+              }
+              if (value && value.buffer instanceof ArrayBuffer) {
+                resolve(new Uint8Array(value.buffer));
+                return;
+              }
+              resolve(null);
+            };
+            req.onerror = () => reject(req.error || new Error("failed to read model cache"));
+          });
+        } finally {
+          db.close();
+        }
+      }
+
+      async function writeModelCache(url, bytes) {
+        const db = await openModelDb();
+        if (!db) {
+          return;
+        }
+        try {
+          await new Promise((resolve, reject) => {
+            const tx = db.transaction(modelStoreName, "readwrite");
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error || new Error("failed to write model cache"));
+            tx.objectStore(modelStoreName).put(bytes.buffer.slice(0), url);
+          });
+        } finally {
+          db.close();
+        }
+      }
+
       async function fetchCachedBytes(url, cacheKey) {
+        if (cacheKey && cacheKey.includes("/model/")) {
+          const modelBytes = await readModelCache(url);
+          if (modelBytes) {
+            append(`[model-idb-hit] ${url}`);
+            postStatus("model-idb-hit", `${url} ${(modelBytes.byteLength / (1024 * 1024)).toFixed(2)} MiB`);
+            return modelBytes;
+          }
+          postStatus("model-idb-miss", url);
+        }
+
         const cacheApi = typeof caches !== "undefined" ? caches : null;
         const cache = cacheApi ? await cacheApi.open(fileCacheName) : null;
         if (cache) {
@@ -115,6 +189,10 @@
           if (cache) {
             await cache.put(cacheKey, new Response(bytes, { headers: { "Content-Type": response.headers.get("content-type") || "application/octet-stream" } }));
           }
+          if (cacheKey && cacheKey.includes("/model/")) {
+            await writeModelCache(url, bytes);
+            postStatus("model-idb-ready", `${url} ${(bytes.byteLength / (1024 * 1024)).toFixed(2)} MiB`);
+          }
           postStatus("fetch-ready", url);
           return bytes;
         }
@@ -122,6 +200,10 @@
           await cache.put(cacheKey, response.clone());
         }
         const bytes = new Uint8Array(await response.arrayBuffer());
+        if (cacheKey && cacheKey.includes("/model/")) {
+          await writeModelCache(url, bytes);
+          postStatus("model-idb-ready", `${url} ${(bytes.byteLength / (1024 * 1024)).toFixed(2)} MiB`);
+        }
         postStatus("fetch-ready", url);
         return bytes;
       }
