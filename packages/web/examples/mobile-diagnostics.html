@@ -127,6 +127,11 @@
     <section class="panel">
       <label class="label" for="model-url">Model URL</label>
       <input id="model-url" type="text">
+      <label class="label" for="runner-mode" style="display:block; margin-top: 12px;">Runner Mode</label>
+      <select id="runner-mode">
+        <option value="persistent" selected>Persistent</option>
+        <option value="ephemeral">Ephemeral</option>
+      </select>
       <label class="label" for="input-text" style="display:block; margin-top: 12px;">Input</label>
       <textarea id="input-text">你好，世界。请把这句话编码成 embedding 向量。</textarea>
       <div class="actions">
@@ -139,6 +144,7 @@
     <section class="grid">
       <div class="panel"><div class="label">Status</div><div id="status" class="value">Idle</div></div>
       <div class="panel"><div class="label">Runtime</div><div id="runtime" class="value">-</div></div>
+      <div class="panel"><div class="label">Runner Mode</div><div id="runner-mode-value" class="value">-</div></div>
       <div class="panel"><div class="label">Elapsed</div><div id="elapsed" class="value">-</div></div>
       <div class="panel"><div class="label">Token Count</div><div id="token-count" class="value">-</div></div>
       <div class="panel"><div class="label">Dimension</div><div id="dimension" class="value">-</div></div>
@@ -169,10 +175,11 @@
   </main>
 
   <script type="module">
-    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=handshake2";
+    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=persistent1";
 
     const statusEl = document.getElementById("status");
     const runtimeEl = document.getElementById("runtime");
+    const runnerModeValueEl = document.getElementById("runner-mode-value");
     const elapsedEl = document.getElementById("elapsed");
     const tokenCountEl = document.getElementById("token-count");
     const dimensionEl = document.getElementById("dimension");
@@ -185,6 +192,7 @@
     const reportEl = document.getElementById("report");
     const statusTrail = [];
     const modelUrlEl = document.getElementById("model-url");
+    const runnerModeEl = document.getElementById("runner-mode");
     const inputEl = document.getElementById("input-text");
     const detectBtn = document.getElementById("detect-btn");
     const runBtn = document.getElementById("run-btn");
@@ -204,6 +212,7 @@
       copyBtn.disabled = nextBusy || !lastReport;
       modelUrlEl.disabled = nextBusy;
       inputEl.disabled = nextBusy;
+      runnerModeEl.disabled = nextBusy;
       if (statusText != null) {
         statusEl.textContent = statusText;
       }
@@ -261,6 +270,7 @@
     async function getEmbedder() {
       const key = JSON.stringify({
         modelUrl: modelUrlEl.value.trim(),
+        runnerMode: runnerModeEl.value,
         origin: window.location.origin,
       });
       if (embedder && embedderKey === key) {
@@ -271,6 +281,7 @@
       }
       embedder = await createSnowflakeEmbedder({
         modelUrl: modelUrlEl.value.trim(),
+        runnerMode: runnerModeEl.value,
         runtimeBaseUrl: window.location.origin,
         cache: true,
         onStatus(event) {
@@ -286,6 +297,7 @@
         mode: report.mode,
         status: report.status,
         runtime: report.runtime,
+        runner_mode: report.runner_mode ?? runnerModeEl.value,
         elapsed_ms: report.elapsed_ms ?? null,
         token_count: report.token_count ?? null,
         dimension: report.dimension ?? null,
@@ -297,6 +309,7 @@
       };
       lastReport = compactReport;
       runtimeEl.textContent = report.runtime || "-";
+      runnerModeValueEl.textContent = compactReport.runner_mode || "-";
       elapsedEl.textContent = report.elapsed_ms == null ? "-" : `${report.elapsed_ms.toFixed(2)} ms`;
       tokenCountEl.textContent = report.token_count == null ? "-" : String(report.token_count);
       dimensionEl.textContent = report.dimension == null ? "-" : String(report.dimension);
@@ -315,6 +328,7 @@
         mode: "detect",
         status: "ready",
         runtime: info.runtime,
+        runner_mode: info.runnerMode,
         cross_origin_isolated: window.crossOriginIsolated,
         webgpu_present: Boolean(navigator.gpu),
         hardware_concurrency: navigator.hardwareConcurrency || null,
@@ -339,6 +353,7 @@
         mode: "smoke",
         status: "done",
         runtime: result.runtime,
+        runner_mode: result.runnerMode,
         elapsed_ms: elapsed,
         token_count: result.tokenCount,
         dimension: result.vector.length,

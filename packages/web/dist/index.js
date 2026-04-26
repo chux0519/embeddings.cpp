@@ -240,6 +240,7 @@ class BrowserSnowflakeEmbedder {
         return {
             modelUrl: this.options.modelUrl,
             runtime: this.runtime,
+            runnerMode: this.options.runnerMode,
             dim: 768,
             normalized: true,
         };
@@ -282,6 +283,7 @@ class BrowserSnowflakeEmbedder {
                 vector: Float32Array.from(vector),
                 tokenCount: tokenCounts[index],
                 runtime: this.runtime,
+                runnerMode: this.options.runnerMode,
             }));
         });
     }
@@ -332,7 +334,10 @@ class BrowserSnowflakeEmbedder {
         if (this.runtime === "pthread") {
             params.set("threads", String(this.options.threads));
         }
-        return `${joinUrl(this.runtimeBaseUrl(), "/scripts/wasm_encode_page.html")}?${params.toString()}`;
+        const runnerPage = this.options.runnerMode === "persistent"
+            ? "/scripts/wasm_persistent_encode_page.html"
+            : "/scripts/wasm_encode_page.html";
+        return `${joinUrl(this.runtimeBaseUrl(), runnerPage)}?${params.toString()}`;
     }
     async ensureTokenizer() {
         if (this.tokenizer) {
@@ -375,10 +380,11 @@ class BrowserSnowflakeEmbedder {
     async prefetchFiles() {
         const assets = [
             joinUrl(this.runtimeBaseUrl(), "/scripts/wasm_encode_page.html"),
+            joinUrl(this.runtimeBaseUrl(), "/scripts/wasm_persistent_encode_page.html"),
             this.tokenizerScriptUrl(),
             this.tokenizerJsonUrl(),
-            joinUrl(this.runtimeBaseUrl(), `/${this.buildDir()}/embedding_wasm_model_encode.js`),
-            joinUrl(this.runtimeBaseUrl(), `/${this.buildDir()}/embedding_wasm_model_encode.wasm`),
+            joinUrl(this.runtimeBaseUrl(), `/${this.buildDir()}/${this.options.runnerMode === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.js`),
+            joinUrl(this.runtimeBaseUrl(), `/${this.buildDir()}/${this.options.runnerMode === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.wasm`),
             this.options.modelUrl,
         ];
         for (const asset of assets) {
@@ -440,7 +446,9 @@ class BrowserSnowflakeEmbedder {
             const timeout = window.setTimeout(() => {
                 window.clearInterval(ping);
                 window.removeEventListener("message", onMessage);
-                self.resetIframe();
+                if (self.options.runnerMode === "ephemeral") {
+                    self.resetIframe();
+                }
                 const suffix = lastStage ? ` after ${lastStage}${lastDetail ? `: ${lastDetail}` : ""}` : "";
                 reject(new Error(`encode request timed out${suffix}`));
             }, 120000);
@@ -470,8 +478,11 @@ class BrowserSnowflakeEmbedder {
                 window.clearTimeout(timeout);
                 window.clearInterval(ping);
                 window.removeEventListener("message", onMessage);
-                self.resetIframe();
+                if (self.options.runnerMode === "ephemeral") {
+                    self.resetIframe();
+                }
                 if (data.error || !data.result) {
+                    self.resetIframe();
                     reject(new Error(data.error || `encode failed after ${lastStage || "unknown-stage"}${lastDetail ? `: ${lastDetail}` : ""}`));
                     return;
                 }
@@ -491,6 +502,7 @@ export async function createSnowflakeEmbedder(options) {
     const resolved = {
         modelUrl: options.modelUrl || DEFAULT_SNOWFLAKE_MODEL_URL,
         runtime: options.runtime ?? "auto",
+        runnerMode: options.runnerMode ?? "ephemeral",
         runtimeBaseUrl,
         tokenizerUrl,
         tokenizerScriptUrl,
@@ -506,6 +518,7 @@ export function createSnowflakeDefaults(overrides = {}) {
     return {
         modelUrl: DEFAULT_SNOWFLAKE_MODEL_URL,
         runtime: "auto",
+        runnerMode: "ephemeral",
         runtimeBaseUrl: browserOrigin() || DEFAULT_RUNTIME_BASE_PATH,
         cache: true,
         ...overrides,

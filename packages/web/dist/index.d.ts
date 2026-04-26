@@ -1,4 +1,5 @@
 export type SnowflakeRuntime = "auto" | "webgpu" | "pthread" | "wasm";
+export type SnowflakeRunnerMode = "ephemeral" | "persistent";
 type ResolvedRuntime = Exclude<SnowflakeRuntime, "auto">;
 export interface SnowflakeStatusEvent {
     stage: string;
@@ -9,6 +10,7 @@ export interface SnowflakeStatusEvent {
 export interface SnowflakeEmbedderOptions {
     modelUrl: string;
     runtime?: SnowflakeRuntime;
+    runnerMode?: SnowflakeRunnerMode;
     runtimeBaseUrl?: string;
     tokenizerUrl?: string;
     tokenizerScriptUrl?: string;
@@ -20,10 +22,12 @@ export interface SnowflakeEmbedding {
     vector: Float32Array;
     tokenCount: number;
     runtime: ResolvedRuntime;
+    runnerMode: SnowflakeRunnerMode;
 }
 export interface SnowflakeEmbedderInfo {
     modelUrl: string;
     runtime: ResolvedRuntime | "pending";
+    runnerMode: SnowflakeRunnerMode;
     dim: 768;
     normalized: true;
 }

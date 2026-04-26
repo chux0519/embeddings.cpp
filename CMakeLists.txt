@@ -43,6 +43,12 @@ add_executable(embedding_wasm_model_encode
     src/gte.cpp
     src/utils.cpp
 )
+add_executable(embedding_wasm_model_runner
+    src/wasm_model_runner.cpp
+    src/base_model.cpp
+    src/gte.cpp
+    src/utils.cpp
+)
 add_executable(quantize src/quantize.cpp)
 add_executable(test_embedding tests/test_embedding.cpp)
 add_executable(test_tokenizer tests/test_tokenizer.cpp)
@@ -52,9 +58,20 @@ target_link_libraries(embedding_cli PRIVATE embeddings)
 target_link_libraries(embedding_wasm_bench PRIVATE embeddings)
 target_link_libraries(embedding_wasm_model_bench PRIVATE ggml)
 target_link_libraries(embedding_wasm_model_encode PRIVATE ggml)
+target_link_libraries(embedding_wasm_model_runner PRIVATE ggml)
 target_link_libraries(quantize PRIVATE embeddings)
 target_link_libraries(test_embedding PRIVATE embeddings)
 target_link_libraries(test_tokenizer PRIVATE embeddings)
+
+if (EMSCRIPTEN)
+    target_link_options(embedding_wasm_model_runner PRIVATE
+        "SHELL:-sALLOW_MEMORY_GROWTH=1"
+        "SHELL:-sASSERTIONS=0"
+        "SHELL:-sNO_EXIT_RUNTIME=1"
+        "SHELL:-sEXPORTED_FUNCTIONS=['_runner_init','_runner_encode','_runner_last_json','_runner_last_error','_runner_reset']"
+        "SHELL:-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString']"
+    )
+endif ()
 
 option(EMBEDDINGS_CPP_ENABLE_PYBIND "embeddings.cpp: enable python binding" OFF)
 if (EMBEDDINGS_CPP_ENABLE_PYBIND)
