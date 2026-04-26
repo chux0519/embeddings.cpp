@@ -1,18 +1,31 @@
 {
   "name": "@embeddings-cpp/web",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Browser-first Snowflake embedding client design scaffold for embeddings.cpp",
+  "version": "0.1.0",
+  "description": "Browser-first Snowflake embedding client for embeddings.cpp",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "dist",
     "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pack:dry-run": "npm pack --dry-run"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
   },
   "keywords": [
     "embeddings",

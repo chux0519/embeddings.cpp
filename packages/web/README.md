@@ -11,6 +11,10 @@ Current status:
 - runtime auto-selects `webgpu`, then `pthread`, then `wasm`
 - model and runtime assets load from URLs and reuse browser cache
 
+Repo example:
+
+- [packages/web/examples/basic-browser.html](/home/yongsheng/repos/embeddings.cpp/packages/web/examples/basic-browser.html)
+
 Minimal usage:
 
 ```ts
@@ -42,6 +46,14 @@ Warm the browser cache before the first interactive request:
 
 ```ts
 await embedder.prefetch();
+```
+
+Local smoke test:
+
+```bash
+python3 scripts/browser_wasm_bench_server.py --host 127.0.0.1 --port 18081 --root "$PWD"
+npm install --no-save playwright
+node scripts/smoke_web_package.mjs
 ```
 
 See [docs/SNOWFLAKE_NPM_PACKAGE.md](/home/yongsheng/repos/embeddings.cpp/docs/SNOWFLAKE_NPM_PACKAGE.md)

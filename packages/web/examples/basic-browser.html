@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>@embeddings-cpp/web example</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #f5f5f4;
+      color: #1c1917;
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+    textarea,
+    input,
+    button {
+      font: inherit;
+    }
+    textarea,
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #d6d3d1;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff;
+      color: #1c1917;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      background: #0f766e;
+      color: #fff;
+      cursor: pointer;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .meta > div,
+    .panel {
+      border: 1px solid #d6d3d1;
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+    }
+    .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #78716c;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>@embeddings-cpp/web</h1>
+    <p>Minimal browser example for the Snowflake embedder.</p>
+
+    <div class="panel">
+      <label class="label" for="model-url">Model URL</label>
+      <input id="model-url" type="text">
+    </div>
+
+    <div class="panel" style="margin-top: 12px;">
+      <label class="label" for="input-text">Input</label>
+      <textarea id="input-text" rows="5">你好，世界。请把这句话编码成 embedding 向量。</textarea>
+      <div style="display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+        <button id="prefetch-btn">Prefetch</button>
+        <button id="embed-btn">Embed</button>
+      </div>
+    </div>
+
+    <div class="meta">
+      <div><div class="label">Status</div><div id="status">Idle</div></div>
+      <div><div class="label">Runtime</div><div id="runtime">-</div></div>
+      <div><div class="label">Token Count</div><div id="token-count">-</div></div>
+      <div><div class="label">Dimension</div><div id="dimension">-</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="label">Vector Preview</div>
+      <pre id="preview"></pre>
+    </div>
+  </main>
+
+  <script type="module">
+    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js";
+
+    const modelUrlEl = document.getElementById("model-url");
+    const inputEl = document.getElementById("input-text");
+    const statusEl = document.getElementById("status");
+    const runtimeEl = document.getElementById("runtime");
+    const tokenCountEl = document.getElementById("token-count");
+    const dimensionEl = document.getElementById("dimension");
+    const previewEl = document.getElementById("preview");
+
+    modelUrlEl.value = `${window.location.origin}/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`;
+
+    let embedder = null;
+
+    async function getEmbedder() {
+      if (!embedder) {
+        embedder = await createSnowflakeEmbedder({
+          modelUrl: modelUrlEl.value.trim(),
+          runtimeBaseUrl: window.location.origin,
+          cache: true,
+        });
+      }
+      return embedder;
+    }
+
+    document.getElementById("prefetch-btn").addEventListener("click", async () => {
+      try {
+        statusEl.textContent = "Prefetching";
+        const client = await getEmbedder();
+        await client.prefetch();
+        statusEl.textContent = "Ready";
+        runtimeEl.textContent = client.info().runtime;
+      } catch (error) {
+        statusEl.textContent = `Failed: ${error.message || error}`;
+      }
+    });
+
+    document.getElementById("embed-btn").addEventListener("click", async () => {
+      try {
+        statusEl.textContent = "Encoding";
+        previewEl.textContent = "";
+        const client = await getEmbedder();
+        const result = await client.embed(inputEl.value);
+        statusEl.textContent = "Done";
+        runtimeEl.textContent = result.runtime;
+        tokenCountEl.textContent = String(result.tokenCount);
+        dimensionEl.textContent = String(result.vector.length);
+        previewEl.textContent = Array.from(result.vector.slice(0, 32))
+          .map((value) => value.toFixed(6))
+          .join(", ");
+      } catch (error) {
+        statusEl.textContent = `Failed: ${error.message || error}`;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -37,6 +37,11 @@ interface BrowserTokenizersNamespace {
     };
 }
 declare global {
+    interface Navigator {
+        gpu?: {
+            requestAdapter(): Promise<unknown>;
+        };
+    }
     interface Window {
         tokenizers?: BrowserTokenizersNamespace;
     }

@@ -48,6 +48,12 @@ interface EncodeResultPayload {
 }
 
 declare global {
+  interface Navigator {
+    gpu?: {
+      requestAdapter(): Promise<unknown>;
+    };
+  }
+
   interface Window {
     tokenizers?: BrowserTokenizersNamespace;
   }
