@@ -566,7 +566,13 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
       let sent = false;
       let lastStage = "";
       let lastDetail = "";
+      const ping = window.setInterval(() => {
+        if (!sent) {
+          iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
+        }
+      }, 250);
       const timeout = window.setTimeout(() => {
+        window.clearInterval(ping);
         window.removeEventListener("message", onMessage);
         self.resetIframe();
         const suffix = lastStage ? ` after ${lastStage}${lastDetail ? `: ${lastDetail}` : ""}` : "";
@@ -596,6 +602,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
           self.emit(lastStage, lastDetail);
           if (!sent && lastStage === "waiting-request") {
             sent = true;
+            window.clearInterval(ping);
             self.emit("encode-request-sent");
             iframe.contentWindow?.postMessage({ type: "encode-request", batchLine }, "*");
           }
@@ -605,6 +612,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
           return;
         }
         window.clearTimeout(timeout);
+        window.clearInterval(ping);
         window.removeEventListener("message", onMessage);
         self.resetIframe();
         if (data.error || !data.result) {
@@ -615,6 +623,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
       }
 
       window.addEventListener("message", onMessage);
+      iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
     });
   }
 }

@@ -29,6 +29,8 @@
       const modelStoreName = "files";
       let jsonBuffer = [];
       let collecting = false;
+      let requestResolver = null;
+      let requestResolved = false;
 
       function postStatus(stage, detail) {
         window.parent.postMessage({ type: "encode-status", stage, detail, atMs: performance.now() }, "*");
@@ -36,6 +38,11 @@
 
       function append(line) {
         log.textContent += line + "\n";
+      }
+
+      function postWaitingRequest(detail = "") {
+        status.textContent = "waiting-request";
+        postStatus("waiting-request", detail);
       }
 
       window.addEventListener("error", (event) => {
@@ -249,16 +256,24 @@
         }
       }
 
-      const request = await new Promise((resolve) => {
-        window.addEventListener("message", (event) => {
-          const data = event.data || {};
-          if (data.type === "encode-request") {
-            postStatus("encode-request-received");
-            resolve(data);
+      window.addEventListener("message", (event) => {
+        const data = event.data || {};
+        if (data.type === "runner-ping") {
+          if (!requestResolved) {
+            postWaitingRequest("pong");
           }
-        }, { once: true });
-        status.textContent = "waiting-request";
-        postStatus("waiting-request");
+          return;
+        }
+        if (data.type === "encode-request" && requestResolver && !requestResolved) {
+          requestResolved = true;
+          postStatus("encode-request-received");
+          requestResolver(data);
+        }
+      });
+
+      const request = await new Promise((resolve) => {
+        requestResolver = resolve;
+        postWaitingRequest("initial");
       });
 
       const files = [];
