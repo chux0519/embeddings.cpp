@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>@embeddings-cpp/web mobile diagnostics</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, sans-serif;
+      background: #fafaf9;
+      color: #1c1917;
+    }
+    body {
+      margin: 0;
+      background: #fafaf9;
+      color: #1c1917;
+    }
+    main {
+      max-width: 840px;
+      margin: 0 auto;
+      padding: 20px 14px 40px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.1;
+    }
+    p {
+      margin: 0;
+      color: #57534e;
+      line-height: 1.6;
+    }
+    section {
+      margin-top: 16px;
+    }
+    .panel {
+      border: 1px solid #d6d3d1;
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+    }
+    .grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+    .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #78716c;
+      letter-spacing: 0.02em;
+    }
+    .value {
+      margin-top: 4px;
+      font-size: 14px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    textarea,
+    input,
+    button {
+      font: inherit;
+    }
+    textarea,
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #d6d3d1;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff;
+      color: #1c1917;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 110px;
+    }
+    .actions {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      margin-top: 12px;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      background: #0f766e;
+      color: #fff;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #1d4ed8;
+    }
+    button.ghost {
+      background: #fff;
+      color: #292524;
+      border: 1px solid #d6d3d1;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <p class="label">Mobile Diagnostics</p>
+      <h1>@embeddings-cpp/web</h1>
+      <p style="margin-top: 10px;">
+        Use this page on iPhone, iPad, or Android to verify browser capability and run one Snowflake embedding request.
+      </p>
+    </section>
+
+    <section class="panel">
+      <label class="label" for="model-url">Model URL</label>
+      <input id="model-url" type="text">
+      <label class="label" for="input-text" style="display:block; margin-top: 12px;">Input</label>
+      <textarea id="input-text">你好，世界。请把这句话编码成 embedding 向量。</textarea>
+      <div class="actions">
+        <button id="detect-btn" class="ghost">Detect Only</button>
+        <button id="run-btn">Run Smoke Test</button>
+        <button id="copy-btn" class="secondary">Copy JSON</button>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel"><div class="label">Status</div><div id="status" class="value">Idle</div></div>
+      <div class="panel"><div class="label">Runtime</div><div id="runtime" class="value">-</div></div>
+      <div class="panel"><div class="label">Elapsed</div><div id="elapsed" class="value">-</div></div>
+      <div class="panel"><div class="label">Token Count</div><div id="token-count" class="value">-</div></div>
+      <div class="panel"><div class="label">Dimension</div><div id="dimension" class="value">-</div></div>
+      <div class="panel"><div class="label">crossOriginIsolated</div><div id="isolated" class="value">-</div></div>
+      <div class="panel"><div class="label">WebGPU</div><div id="webgpu" class="value">-</div></div>
+      <div class="panel"><div class="label">Threads</div><div id="threads" class="value">-</div></div>
+    </section>
+
+    <section class="panel">
+      <div class="label">User Agent</div>
+      <div id="ua" class="value mono"></div>
+    </section>
+
+    <section class="panel">
+      <div class="label">Vector Preview</div>
+      <pre id="preview" class="mono"></pre>
+    </section>
+
+    <section class="panel">
+      <div class="label">Report JSON</div>
+      <pre id="report" class="mono"></pre>
+    </section>
+  </main>
+
+  <script type="module">
+    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js";
+
+    const statusEl = document.getElementById("status");
+    const runtimeEl = document.getElementById("runtime");
+    const elapsedEl = document.getElementById("elapsed");
+    const tokenCountEl = document.getElementById("token-count");
+    const dimensionEl = document.getElementById("dimension");
+    const isolatedEl = document.getElementById("isolated");
+    const webgpuEl = document.getElementById("webgpu");
+    const threadsEl = document.getElementById("threads");
+    const uaEl = document.getElementById("ua");
+    const previewEl = document.getElementById("preview");
+    const reportEl = document.getElementById("report");
+    const modelUrlEl = document.getElementById("model-url");
+    const inputEl = document.getElementById("input-text");
+
+    modelUrlEl.value = `${window.location.origin}/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`;
+
+    let embedder = null;
+    let embedderKey = "";
+    let lastReport = null;
+
+    function setStaticFields() {
+      isolatedEl.textContent = String(window.crossOriginIsolated);
+      webgpuEl.textContent = navigator.gpu ? "present" : "missing";
+      threadsEl.textContent = String(navigator.hardwareConcurrency || "unknown");
+      uaEl.textContent = navigator.userAgent;
+    }
+
+    async function getEmbedder() {
+      const key = JSON.stringify({
+        modelUrl: modelUrlEl.value.trim(),
+        origin: window.location.origin,
+      });
+      if (embedder && embedderKey === key) {
+        return embedder;
+      }
+      if (embedder) {
+        await embedder.dispose();
+      }
+      embedder = await createSnowflakeEmbedder({
+        modelUrl: modelUrlEl.value.trim(),
+        runtimeBaseUrl: window.location.origin,
+        cache: true,
+      });
+      embedderKey = key;
+      return embedder;
+    }
+
+    function renderReport(report) {
+      lastReport = report;
+      runtimeEl.textContent = report.runtime || "-";
+      elapsedEl.textContent = report.elapsed_ms == null ? "-" : `${report.elapsed_ms.toFixed(2)} ms`;
+      tokenCountEl.textContent = report.token_count == null ? "-" : String(report.token_count);
+      dimensionEl.textContent = report.dimension == null ? "-" : String(report.dimension);
+      previewEl.textContent = report.preview || "";
+      reportEl.textContent = JSON.stringify(report, null, 2);
+    }
+
+    async function detectOnly() {
+      statusEl.textContent = "Detecting";
+      const client = await getEmbedder();
+      const info = client.info();
+      statusEl.textContent = "Ready";
+      renderReport({
+        mode: "detect",
+        status: "ready",
+        runtime: info.runtime,
+        cross_origin_isolated: window.crossOriginIsolated,
+        webgpu_present: Boolean(navigator.gpu),
+        hardware_concurrency: navigator.hardwareConcurrency || null,
+        user_agent: navigator.userAgent,
+      });
+    }
+
+    async function runSmoke() {
+      const text = inputEl.value.trim();
+      if (!text) {
+        throw new Error("input text is empty");
+      }
+      statusEl.textContent = "Encoding";
+      const client = await getEmbedder();
+      const t0 = performance.now();
+      const result = await client.embed(text);
+      const elapsed = performance.now() - t0;
+      statusEl.textContent = "Done";
+      renderReport({
+        mode: "smoke",
+        status: "done",
+        runtime: result.runtime,
+        elapsed_ms: elapsed,
+        token_count: result.tokenCount,
+        dimension: result.vector.length,
+        preview: Array.from(result.vector.slice(0, 16)).map((value) => value.toFixed(6)).join(", "),
+        cross_origin_isolated: window.crossOriginIsolated,
+        webgpu_present: Boolean(navigator.gpu),
+        hardware_concurrency: navigator.hardwareConcurrency || null,
+        user_agent: navigator.userAgent,
+      });
+    }
+
+    async function copyReport() {
+      if (!lastReport) {
+        return;
+      }
+      await navigator.clipboard.writeText(JSON.stringify(lastReport, null, 2));
+      statusEl.textContent = "Copied";
+    }
+
+    document.getElementById("detect-btn").addEventListener("click", async () => {
+      try {
+        await detectOnly();
+      } catch (error) {
+        statusEl.textContent = `Failed: ${error.message || error}`;
+      }
+    });
+
+    document.getElementById("run-btn").addEventListener("click", async () => {
+      try {
+        await runSmoke();
+      } catch (error) {
+        statusEl.textContent = `Failed: ${error.message || error}`;
+      }
+    });
+
+    document.getElementById("copy-btn").addEventListener("click", async () => {
+      try {
+        await copyReport();
+      } catch (error) {
+        statusEl.textContent = `Failed: ${error.message || error}`;
+      }
+    });
+
+    setStaticFields();
+
+    if (new URLSearchParams(window.location.search).get("autorun") === "1") {
+      runSmoke().catch((error) => {
+        statusEl.textContent = `Failed: ${error.message || error}`;
+      });
+    } else {
+      detectOnly().catch((error) => {
+        statusEl.textContent = `Failed: ${error.message || error}`;
+      });
+    }
+  </script>
+</body>
+</html>

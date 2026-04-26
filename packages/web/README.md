@@ -14,6 +14,7 @@ Current status:
 Repo example:
 
 - [packages/web/examples/basic-browser.html](/home/yongsheng/repos/embeddings.cpp/packages/web/examples/basic-browser.html)
+- [packages/web/examples/mobile-diagnostics.html](/home/yongsheng/repos/embeddings.cpp/packages/web/examples/mobile-diagnostics.html)
 
 Minimal usage:
 
@@ -55,6 +56,14 @@ python3 scripts/browser_wasm_bench_server.py --host 127.0.0.1 --port 18081 --roo
 npm install --no-save playwright
 node scripts/smoke_web_package.mjs
 ```
+
+Mobile diagnostics page:
+
+```text
+http://<host>:18081/packages/web/examples/mobile-diagnostics.html
+```
+
+Add `?autorun=1` to run one embedding request on load and emit a compact JSON report.
 
 See [docs/SNOWFLAKE_NPM_PACKAGE.md](/home/yongsheng/repos/embeddings.cpp/docs/SNOWFLAKE_NPM_PACKAGE.md)
 for the full design.
