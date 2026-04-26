@@ -5,6 +5,7 @@ export interface SnowflakeStatusEvent {
   stage: string;
   detail?: string;
   runtime?: ResolvedRuntime;
+  atMs?: number;
 }
 
 export interface SnowflakeEmbedderOptions {
@@ -85,6 +86,13 @@ function browserOrigin(): string {
     return "";
   }
   return window.location.origin;
+}
+
+function nowMs(): number {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return Date.now();
 }
 
 function joinUrl(base: string, path: string): string {
@@ -183,7 +191,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
   }
 
   private emit(stage: string, detail?: string): void {
-    this.options.onStatus({ stage, detail, runtime: this.runtime });
+    this.options.onStatus({ stage, detail, runtime: this.runtime, atMs: nowMs() });
   }
 
   info(): SnowflakeEmbedderInfo {
@@ -320,8 +328,11 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     if (!tokenizers?.Tokenizer) {
       throw new Error("web-tokenizers runtime did not initialize");
     }
+    this.emit("tokenizer-json-ready");
     const json = await response.arrayBuffer();
+    this.emit("tokenizer-fromjson-start");
     this.tokenizer = await tokenizers.Tokenizer.fromJSON(json);
+    this.emit("tokenizer-fromjson-ready");
     this.emit("tokenizer-ready");
     return this.tokenizer;
   }
@@ -385,7 +396,14 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
 
       function onMessage(event: MessageEvent): void {
         const data = event.data as
-          | { type?: string; result?: EncodeResultPayload; error?: string; stage?: string; detail?: string }
+          | {
+              type?: string;
+              result?: EncodeResultPayload;
+              error?: string;
+              stage?: string;
+              detail?: string;
+              atMs?: number;
+            }
           | undefined;
         if (!data) {
           return;

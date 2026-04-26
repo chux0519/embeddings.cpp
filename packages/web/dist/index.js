@@ -14,6 +14,12 @@ function browserOrigin() {
     }
     return window.location.origin;
 }
+function nowMs() {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+        return performance.now();
+    }
+    return Date.now();
+}
 function joinUrl(base, path) {
     return new URL(path, base.endsWith("/") ? base : `${base}/`).toString();
 }
@@ -94,7 +100,7 @@ class BrowserSnowflakeEmbedder {
         this.runtime = runtime;
     }
     emit(stage, detail) {
-        this.options.onStatus({ stage, detail, runtime: this.runtime });
+        this.options.onStatus({ stage, detail, runtime: this.runtime, atMs: nowMs() });
     }
     info() {
         return {
@@ -211,8 +217,11 @@ class BrowserSnowflakeEmbedder {
         if (!tokenizers?.Tokenizer) {
             throw new Error("web-tokenizers runtime did not initialize");
         }
+        this.emit("tokenizer-json-ready");
         const json = await response.arrayBuffer();
+        this.emit("tokenizer-fromjson-start");
         this.tokenizer = await tokenizers.Tokenizer.fromJSON(json);
+        this.emit("tokenizer-fromjson-ready");
         this.emit("tokenizer-ready");
         return this.tokenizer;
     }

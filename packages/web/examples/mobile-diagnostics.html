@@ -154,6 +154,11 @@
     </section>
 
     <section class="panel">
+      <div class="label">Stage Timings</div>
+      <pre id="timings" class="mono"></pre>
+    </section>
+
+    <section class="panel">
       <div class="label">Report JSON</div>
       <pre id="report" class="mono"></pre>
     </section>
@@ -172,6 +177,7 @@
     const threadsEl = document.getElementById("threads");
     const uaEl = document.getElementById("ua");
     const previewEl = document.getElementById("preview");
+    const timingsEl = document.getElementById("timings");
     const reportEl = document.getElementById("report");
     const statusTrail = [];
     const modelUrlEl = document.getElementById("model-url");
@@ -183,13 +189,41 @@
     let embedderKey = "";
     let lastReport = null;
 
-    function pushStage(stage, detail = "") {
+    function pushStage(stage, detail = "", atMs = performance.now()) {
       statusTrail.push({
         at: new Date().toISOString(),
+        at_ms: atMs,
         stage,
         detail,
       });
       statusEl.textContent = detail ? `${stage}: ${detail}` : stage;
+    }
+
+    function firstStage(stage) {
+      return statusTrail.find((entry) => entry.stage === stage) || null;
+    }
+
+    function durationMs(startStage, endStage) {
+      const start = firstStage(startStage);
+      const end = firstStage(endStage);
+      if (!start || !end) {
+        return null;
+      }
+      return Math.max(0, end.at_ms - start.at_ms);
+    }
+
+    function summarizeTimings() {
+      const summary = {
+        tokenizer_script_ms: durationMs("tokenizer-script-loading", "tokenizer-script-ready"),
+        tokenizer_json_fetch_ms: durationMs("tokenizer-json-loading", "tokenizer-json-ready"),
+        tokenizer_fromjson_ms: durationMs("tokenizer-fromjson-start", "tokenizer-fromjson-ready"),
+        tokenizer_total_ms: durationMs("tokenizer-script-loading", "tokenizer-ready"),
+        runtime_page_load_ms: durationMs("runtime-page-loading", "runtime-page-ready"),
+        model_fetch_ms: durationMs("fetch-start", "fetch-ready"),
+        encode_request_ms: durationMs("encode-request-sent", "encode-result-ready"),
+      };
+      timingsEl.textContent = JSON.stringify(summary, null, 2);
+      return summary;
     }
 
     function setStaticFields() {
@@ -215,7 +249,7 @@
         runtimeBaseUrl: window.location.origin,
         cache: true,
         onStatus(event) {
-          pushStage(event.stage, event.detail || event.runtime || "");
+          pushStage(event.stage, event.detail || event.runtime || "", event.atMs || performance.now());
         },
       });
       embedderKey = key;
@@ -229,6 +263,7 @@
       tokenCountEl.textContent = report.token_count == null ? "-" : String(report.token_count);
       dimensionEl.textContent = report.dimension == null ? "-" : String(report.dimension);
       previewEl.textContent = report.preview || "";
+      report.stage_timings = summarizeTimings();
       reportEl.textContent = JSON.stringify(report, null, 2);
     }
 

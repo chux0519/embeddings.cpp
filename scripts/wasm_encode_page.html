@@ -29,7 +29,7 @@
       let collecting = false;
 
       function postStatus(stage, detail) {
-        window.parent.postMessage({ type: "encode-status", stage, detail }, "*");
+        window.parent.postMessage({ type: "encode-status", stage, detail, atMs: performance.now() }, "*");
       }
 
       function append(line) {
@@ -223,7 +223,7 @@
       const message = String(err && err.message ? err.message : err);
       status.textContent = "prepare-error";
       log.textContent += `[prepare-error] ${message}\n`;
-      window.parent.postMessage({ type: "encode-status", stage: "prepare-error", detail: message }, "*");
+      window.parent.postMessage({ type: "encode-status", stage: "prepare-error", detail: message, atMs: performance.now() }, "*");
       window.parent.postMessage({ type: "encode-result", result: null, error: message }, "*");
     });
   </script>

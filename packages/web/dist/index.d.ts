@@ -4,6 +4,7 @@ export interface SnowflakeStatusEvent {
     stage: string;
     detail?: string;
     runtime?: ResolvedRuntime;
+    atMs?: number;
 }
 export interface SnowflakeEmbedderOptions {
     modelUrl: string;
