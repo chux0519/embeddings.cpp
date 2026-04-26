@@ -429,18 +429,32 @@ class BrowserSnowflakeEmbedder {
         const iframe = await this.ensureIframe();
         return new Promise((resolve, reject) => {
             const self = this;
+            let sent = false;
+            let lastStage = "";
+            let lastDetail = "";
             const timeout = window.setTimeout(() => {
                 window.removeEventListener("message", onMessage);
                 self.resetIframe();
-                reject(new Error("encode request timed out"));
+                const suffix = lastStage ? ` after ${lastStage}${lastDetail ? `: ${lastDetail}` : ""}` : "";
+                reject(new Error(`encode request timed out${suffix}`));
             }, 120000);
             function onMessage(event) {
+                if (event.source !== iframe.contentWindow) {
+                    return;
+                }
                 const data = event.data;
                 if (!data) {
                     return;
                 }
                 if (data.type === "encode-status") {
-                    self.emit(data.stage || "encode-status", data.detail);
+                    lastStage = data.stage || "encode-status";
+                    lastDetail = data.detail || "";
+                    self.emit(lastStage, lastDetail);
+                    if (!sent && lastStage === "waiting-request") {
+                        sent = true;
+                        self.emit("encode-request-sent");
+                        iframe.contentWindow?.postMessage({ type: "encode-request", batchLine }, "*");
+                    }
                     return;
                 }
                 if (data.type !== "encode-result") {
@@ -450,14 +464,12 @@ class BrowserSnowflakeEmbedder {
                 window.removeEventListener("message", onMessage);
                 self.resetIframe();
                 if (data.error || !data.result) {
-                    reject(new Error(data.error || "encode failed"));
+                    reject(new Error(data.error || `encode failed after ${lastStage || "unknown-stage"}${lastDetail ? `: ${lastDetail}` : ""}`));
                     return;
                 }
                 resolve(data.result);
             }
             window.addEventListener("message", onMessage);
-            this.emit("encode-request-sent");
-            iframe.contentWindow?.postMessage({ type: "encode-request", batchLine }, "*");
         });
     }
 }
