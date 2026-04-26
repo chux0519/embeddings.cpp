@@ -551,12 +551,21 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     return this.iframe;
   }
 
+  private resetIframe(): void {
+    if (this.iframe) {
+      this.iframe.remove();
+      this.iframe = null;
+      this.emit("iframe-reset");
+    }
+  }
+
   private async runEncode(batchLine: string): Promise<EncodeResultPayload> {
     const iframe = await this.ensureIframe();
     return new Promise<EncodeResultPayload>((resolve, reject) => {
       const self = this;
       const timeout = window.setTimeout(() => {
         window.removeEventListener("message", onMessage);
+        self.resetIframe();
         reject(new Error("encode request timed out"));
       }, 120000);
 
@@ -583,6 +592,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
         }
         window.clearTimeout(timeout);
         window.removeEventListener("message", onMessage);
+        self.resetIframe();
         if (data.error || !data.result) {
           reject(new Error(data.error || "encode failed"));
           return;

@@ -418,12 +418,20 @@ class BrowserSnowflakeEmbedder {
         }
         return this.iframe;
     }
+    resetIframe() {
+        if (this.iframe) {
+            this.iframe.remove();
+            this.iframe = null;
+            this.emit("iframe-reset");
+        }
+    }
     async runEncode(batchLine) {
         const iframe = await this.ensureIframe();
         return new Promise((resolve, reject) => {
             const self = this;
             const timeout = window.setTimeout(() => {
                 window.removeEventListener("message", onMessage);
+                self.resetIframe();
                 reject(new Error("encode request timed out"));
             }, 120000);
             function onMessage(event) {
@@ -440,6 +448,7 @@ class BrowserSnowflakeEmbedder {
                 }
                 window.clearTimeout(timeout);
                 window.removeEventListener("message", onMessage);
+                self.resetIframe();
                 if (data.error || !data.result) {
                     reject(new Error(data.error || "encode failed"));
                     return;
