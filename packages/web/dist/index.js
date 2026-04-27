@@ -5,7 +5,7 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg8";
+const RUNTIME_ASSET_VERSION = "webpkg10";
 const BUILD_DIRS = {
     wasm: "build-wasm-web-dyn",
     pthread: "build-wasm-web-pthread-dyn",
@@ -194,8 +194,17 @@ class BrowserSnowflakeEmbedder {
     iframe = null;
     queue = Promise.resolve();
     requestId = 0;
+    effectiveRunnerMode() {
+        if (this.options.runnerMode !== "persistent") {
+            return this.options.runnerMode;
+        }
+        if (this.runtime === "wasm") {
+            return "persistent";
+        }
+        return "ephemeral";
+    }
     shouldRecycleRunnerPerRequest() {
-        return this.runtime === "webgpu" && this.options.runnerMode === "persistent";
+        return this.options.runnerMode === "persistent" && this.effectiveRunnerMode() !== "persistent";
     }
     constructor(options, runtime) {
         this.options = options;
@@ -240,12 +249,16 @@ class BrowserSnowflakeEmbedder {
             modelUrl: this.options.modelUrl,
             runtime: this.runtime,
             runnerMode: this.options.runnerMode,
+            effectiveRunnerMode: this.effectiveRunnerMode(),
             dim: 768,
             normalized: true,
         };
     }
     async prefetch() {
         this.emit("prefetch-start");
+        if (this.options.runnerMode !== this.effectiveRunnerMode()) {
+            this.emit("runner-mode-fallback", `${this.options.runnerMode} -> ${this.effectiveRunnerMode()}`);
+        }
         await this.ensureTokenizer();
         await this.prefetchFiles();
         this.emit("prefetch-ready");
@@ -259,6 +272,9 @@ class BrowserSnowflakeEmbedder {
             return [];
         }
         return this.enqueue(async () => {
+            if (this.options.runnerMode !== this.effectiveRunnerMode()) {
+                this.emit("runner-mode-fallback", `${this.options.runnerMode} -> ${this.effectiveRunnerMode()}`);
+            }
             this.emit("tokenizer-encode-start");
             const tokenizer = await this.ensureTokenizer();
             const lines = [];
@@ -282,7 +298,7 @@ class BrowserSnowflakeEmbedder {
                 vector: Float32Array.from(vector),
                 tokenCount: tokenCounts[index],
                 runtime: this.runtime,
-                runnerMode: this.options.runnerMode,
+                runnerMode: this.effectiveRunnerMode(),
             }));
         });
     }
@@ -337,7 +353,7 @@ class BrowserSnowflakeEmbedder {
         if (this.runtime === "pthread") {
             params.set("threads", String(this.options.threads));
         }
-        const runnerPage = this.options.runnerMode === "persistent"
+        const runnerPage = this.effectiveRunnerMode() === "persistent"
             ? "/scripts/wasm_persistent_encode_page.html"
             : "/scripts/wasm_encode_page.html";
         return `${joinUrl(this.runtimeBaseUrl(), runnerPage)}?${params.toString()}`;
@@ -386,8 +402,8 @@ class BrowserSnowflakeEmbedder {
             this.runtimeAssetUrl("/scripts/wasm_persistent_encode_page.html"),
             this.tokenizerScriptUrl(),
             this.tokenizerJsonUrl(),
-            this.runtimeAssetUrl(`/${this.buildDir()}/${this.options.runnerMode === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.js`),
-            this.runtimeAssetUrl(`/${this.buildDir()}/${this.options.runnerMode === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.wasm`),
+            this.runtimeAssetUrl(`/${this.buildDir()}/${this.effectiveRunnerMode() === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.js`),
+            this.runtimeAssetUrl(`/${this.buildDir()}/${this.effectiveRunnerMode() === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.wasm`),
             this.options.modelUrl,
         ];
         for (const asset of assets) {
@@ -450,9 +466,7 @@ class BrowserSnowflakeEmbedder {
             const timeout = window.setTimeout(() => {
                 window.clearInterval(ping);
                 window.removeEventListener("message", onMessage);
-                if (self.options.runnerMode === "ephemeral") {
-                    self.resetIframe();
-                }
+                self.resetIframe();
                 const suffix = lastStage ? ` after ${lastStage}${lastDetail ? `: ${lastDetail}` : ""}` : "";
                 reject(new Error(`encode request timed out${suffix}`));
             }, 120000);
@@ -488,7 +502,7 @@ class BrowserSnowflakeEmbedder {
                 window.clearTimeout(timeout);
                 window.clearInterval(ping);
                 window.removeEventListener("message", onMessage);
-                if (self.options.runnerMode === "ephemeral" || self.shouldRecycleRunnerPerRequest()) {
+                if (self.effectiveRunnerMode() === "ephemeral" || self.shouldRecycleRunnerPerRequest()) {
                     self.resetIframe();
                 }
                 if (data.error || !data.result) {

@@ -81,7 +81,7 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg8";
+const RUNTIME_ASSET_VERSION = "webpkg10";
 
 const BUILD_DIRS: Record<ResolvedRuntime, string> = {
   wasm: "build-wasm-web-dyn",
@@ -301,8 +301,18 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
   private queue: Promise<void> = Promise.resolve();
   private requestId = 0;
 
+  private effectiveRunnerMode(): SnowflakeRunnerMode {
+    if (this.options.runnerMode !== "persistent") {
+      return this.options.runnerMode;
+    }
+    if (this.runtime === "wasm") {
+      return "persistent";
+    }
+    return "ephemeral";
+  }
+
   private shouldRecycleRunnerPerRequest(): boolean {
-    return this.runtime === "webgpu" && this.options.runnerMode === "persistent";
+    return this.options.runnerMode === "persistent" && this.effectiveRunnerMode() !== "persistent";
   }
 
   constructor(options: Required<SnowflakeEmbedderOptions>, runtime: ResolvedRuntime) {
@@ -354,6 +364,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
       modelUrl: this.options.modelUrl,
       runtime: this.runtime,
       runnerMode: this.options.runnerMode,
+      effectiveRunnerMode: this.effectiveRunnerMode(),
       dim: 768,
       normalized: true,
     };
@@ -361,6 +372,9 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
 
   async prefetch(): Promise<void> {
     this.emit("prefetch-start");
+    if (this.options.runnerMode !== this.effectiveRunnerMode()) {
+      this.emit("runner-mode-fallback", `${this.options.runnerMode} -> ${this.effectiveRunnerMode()}`);
+    }
     await this.ensureTokenizer();
     await this.prefetchFiles();
     this.emit("prefetch-ready");
@@ -377,6 +391,9 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     }
 
     return this.enqueue(async () => {
+      if (this.options.runnerMode !== this.effectiveRunnerMode()) {
+        this.emit("runner-mode-fallback", `${this.options.runnerMode} -> ${this.effectiveRunnerMode()}`);
+      }
       this.emit("tokenizer-encode-start");
       const tokenizer = await this.ensureTokenizer();
       const lines: string[] = [];
@@ -403,7 +420,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
         vector: Float32Array.from(vector),
         tokenCount: tokenCounts[index],
         runtime: this.runtime,
-        runnerMode: this.options.runnerMode,
+        runnerMode: this.effectiveRunnerMode(),
       }));
     });
   }
@@ -470,7 +487,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     }
 
     const runnerPage =
-      this.options.runnerMode === "persistent"
+      this.effectiveRunnerMode() === "persistent"
         ? "/scripts/wasm_persistent_encode_page.html"
         : "/scripts/wasm_encode_page.html";
 
@@ -524,10 +541,10 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
       this.tokenizerScriptUrl(),
       this.tokenizerJsonUrl(),
       this.runtimeAssetUrl(
-        `/${this.buildDir()}/${this.options.runnerMode === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.js`,
+        `/${this.buildDir()}/${this.effectiveRunnerMode() === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.js`,
       ),
       this.runtimeAssetUrl(
-        `/${this.buildDir()}/${this.options.runnerMode === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.wasm`,
+        `/${this.buildDir()}/${this.effectiveRunnerMode() === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.wasm`,
       ),
       this.options.modelUrl,
     ];
@@ -595,15 +612,13 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
           iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
         }
       }, 250);
-      const timeout = window.setTimeout(() => {
-        window.clearInterval(ping);
-        window.removeEventListener("message", onMessage);
-        if (self.options.runnerMode === "ephemeral") {
-          self.resetIframe();
-        }
-        const suffix = lastStage ? ` after ${lastStage}${lastDetail ? `: ${lastDetail}` : ""}` : "";
-        reject(new Error(`encode request timed out${suffix}`));
-      }, 120000);
+            const timeout = window.setTimeout(() => {
+                window.clearInterval(ping);
+                window.removeEventListener("message", onMessage);
+                self.resetIframe();
+                const suffix = lastStage ? ` after ${lastStage}${lastDetail ? `: ${lastDetail}` : ""}` : "";
+                reject(new Error(`encode request timed out${suffix}`));
+            }, 120000);
 
       function onMessage(event: MessageEvent): void {
         if (event.source !== iframe.contentWindow) {
@@ -647,7 +662,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
         window.clearTimeout(timeout);
         window.clearInterval(ping);
         window.removeEventListener("message", onMessage);
-        if (self.options.runnerMode === "ephemeral" || self.shouldRecycleRunnerPerRequest()) {
+        if (self.effectiveRunnerMode() === "ephemeral" || self.shouldRecycleRunnerPerRequest()) {
           self.resetIframe();
         }
         if (data.error || !data.result) {

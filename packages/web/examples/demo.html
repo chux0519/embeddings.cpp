@@ -205,7 +205,7 @@
   </main>
 
   <script type="module">
-    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webpkg8";
+    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webpkg10";
 
     const modelUrlEl = document.getElementById("model-url");
     const runtimeModeEl = document.getElementById("runtime-mode");
@@ -385,7 +385,7 @@
       await client.prefetch();
       const info = client.info();
       runtimeEl.textContent = info.runtime;
-      runnerModeValueEl.textContent = info.runnerMode;
+      runnerModeValueEl.textContent = info.effectiveRunnerMode || info.runnerMode;
       statusEl.textContent = "Prefetch ready";
       summarizeTimings();
       statusesEl.textContent = JSON.stringify(tailStages(), null, 2);
