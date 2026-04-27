@@ -22,6 +22,12 @@ namespace embeddings {
 static bool use_flash_attn_ext() {
   const char *env = std::getenv("EMBEDDINGS_CPP_FLASH_ATTN");
   if (!env) {
+#ifdef __EMSCRIPTEN__
+    const char *backend = std::getenv("EMBEDDINGS_CPP_BACKEND");
+    if (backend && std::strcmp(backend, "webgpu") == 0) {
+      return false;
+    }
+#endif
     return true;
   }
   return std::atoi(env) != 0;
@@ -54,6 +60,10 @@ static int gte_fused_geglu_min_tokens() {
 static bool use_gte_fused_norm() {
   const char *env = std::getenv("EMBEDDINGS_CPP_GTE_FUSED_NORM");
   if (!env) {
+    const char *backend = std::getenv("EMBEDDINGS_CPP_BACKEND");
+    if (backend && std::strcmp(backend, "webgpu") == 0) {
+      return true;
+    }
     return false;
   }
   return std::atoi(env) != 0;
@@ -94,6 +104,10 @@ static bool use_gte_length_sorted_pack() {
 static bool use_gte_fused_linear() {
   const char *env = std::getenv("EMBEDDINGS_CPP_GTE_FUSED_LINEAR");
   if (!env) {
+    const char *backend = std::getenv("EMBEDDINGS_CPP_BACKEND");
+    if (backend && std::strcmp(backend, "webgpu") == 0) {
+      return false;
+    }
     return true;
   }
   return std::atoi(env) != 0;

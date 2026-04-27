@@ -303,10 +303,12 @@ pip install "embeddings-cpp[hub]"
 The Snowflake production artifact also runs in Chromium through browser WASM and
 Browser builds are available for the Snowflake GGUF. The npm-facing browser
 package currently defaults to stable single-thread `wasm`; `webgpu` is
-experimental because Snowflake-specific ggml ops still fall back to CPU until
-dedicated WebGPU kernels are added. The older engine-only browser benchmark
-below is useful for backend tracking, but it excludes tokenizer/package
-overhead and should not be read as the npm package default.
+experimental. It now includes dedicated kernels for several Snowflake-specific
+GTE ops, but the browser backend still needs broader operator coverage and
+browser-specific tuning before it should replace the default WASM path. The
+older engine-only browser benchmark below is useful for backend tracking, but
+it excludes tokenizer/package overhead and should not be read as the npm package
+default.
 
 Platform for the browser numbers below:
 

@@ -17,7 +17,7 @@ Runtime status:
 | Runtime | Status | Notes |
 |---|---|---|
 | `wasm` | Recommended default | Best current browser path for short Snowflake queries. |
-| `webgpu` | Experimental | The Snowflake custom ggml ops still fall back to CPU, so it can be slower until dedicated kernels land. |
+| `webgpu` | Experimental | Includes dedicated kernels for several Snowflake GTE ops, but still needs broader backend coverage and tuning before becoming the default. |
 | `pthread` | Not exposed | The current pthread runner can block the browser page and needs a worker/proxy redesign before release. |
 
 Repo example:
