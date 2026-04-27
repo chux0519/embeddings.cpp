@@ -160,6 +160,7 @@
 
     <section class="panel">
       <div class="label">Vector Preview</div>
+      <div id="preview-meta" class="value mono" style="margin-bottom: 8px;">-</div>
       <pre id="preview" class="mono"></pre>
     </section>
 
@@ -188,6 +189,7 @@
     const threadsEl = document.getElementById("threads");
     const uaEl = document.getElementById("ua");
     const previewEl = document.getElementById("preview");
+    const previewMetaEl = document.getElementById("preview-meta");
     const timingsEl = document.getElementById("timings");
     const reportEl = document.getElementById("report");
     const statusTrail = [];
@@ -260,6 +262,16 @@
       return summary;
     }
 
+    function vectorSignature(values) {
+      let acc = 2166136261 >>> 0;
+      for (const value of values) {
+        const scaled = Math.round(value * 1e6);
+        acc ^= scaled >>> 0;
+        acc = Math.imul(acc, 16777619) >>> 0;
+      }
+      return acc.toString(16).padStart(8, "0");
+    }
+
     function setStaticFields() {
       isolatedEl.textContent = String(window.crossOriginIsolated);
       webgpuEl.textContent = navigator.gpu ? "present" : "missing";
@@ -314,6 +326,7 @@
       tokenCountEl.textContent = report.token_count == null ? "-" : String(report.token_count);
       dimensionEl.textContent = report.dimension == null ? "-" : String(report.dimension);
       previewEl.textContent = report.preview || "";
+      previewMetaEl.textContent = report.preview_meta || "-";
       reportEl.textContent = JSON.stringify(compactReport, null, 2);
       copyBtn.disabled = busy || !lastReport;
     }
@@ -321,6 +334,8 @@
     async function detectOnly() {
       statusTrail.length = 0;
       statusEl.textContent = "Detecting";
+      previewEl.textContent = "";
+      previewMetaEl.textContent = "-";
       const client = await getEmbedder();
       const info = client.info();
       statusEl.textContent = "Ready";
@@ -344,10 +359,13 @@
         throw new Error("input text is empty");
       }
       statusEl.textContent = "Encoding";
+      previewEl.textContent = "";
+      previewMetaEl.textContent = "running";
       const client = await getEmbedder();
       const t0 = performance.now();
       const result = await client.embed(text);
       const elapsed = performance.now() - t0;
+      const vector = Array.from(result.vector);
       statusEl.textContent = "Done";
       renderReport({
         mode: "smoke",
@@ -357,7 +375,8 @@
         elapsed_ms: elapsed,
         token_count: result.tokenCount,
         dimension: result.vector.length,
-        preview: Array.from(result.vector.slice(0, 16)).map((value) => value.toFixed(6)).join(", "),
+        preview: vector.slice(0, 16).map((value) => value.toFixed(6)).join(", "),
+        preview_meta: `sig=${vectorSignature(vector)} len=${vector.length} tokens=${result.tokenCount} input_chars=${text.length}`,
         cross_origin_isolated: window.crossOriginIsolated,
         webgpu_present: Boolean(navigator.gpu),
         hardware_concurrency: navigator.hardwareConcurrency || null,
