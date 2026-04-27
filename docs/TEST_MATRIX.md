@@ -111,4 +111,5 @@ MIN_COSINE=0.995 \
 node scripts/browser_runtime_regression.mjs
 ```
 
-`pthread` browser runtime remains queued behind WebGPU.
+`pthread` is not exposed by the web package. Re-enable it only after a
+worker/proxy runner passes the browser regression suite without page hangs.

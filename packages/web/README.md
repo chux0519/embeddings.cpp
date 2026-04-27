@@ -8,8 +8,17 @@ Current status:
 - browser only
 - one model only
 - normalized `768`-dimensional output
-- runtime auto-selects `webgpu`, then `pthread`, then `wasm`
+- runtime auto-selects stable single-thread `wasm`
+- explicit `webgpu` is experimental for Snowflake
 - model and runtime assets load from URLs and reuse browser cache
+
+Runtime status:
+
+| Runtime | Status | Notes |
+|---|---|---|
+| `wasm` | Recommended default | Best current browser path for short Snowflake queries. |
+| `webgpu` | Experimental | The Snowflake custom ggml ops still fall back to CPU, so it can be slower until dedicated kernels land. |
+| `pthread` | Not exposed | The current pthread runner can block the browser page and needs a worker/proxy redesign before release. |
 
 Repo example:
 
@@ -30,7 +39,7 @@ const embedder = await createSnowflakeEmbedder({
 
 const result = await embedder.embed("你好，世界");
 console.log(result.vector.length); // 768
-console.log(result.runtime);       // "webgpu" | "pthread" | "wasm"
+console.log(result.runtime);       // "wasm" | "webgpu"
 
 await embedder.dispose();
 ```

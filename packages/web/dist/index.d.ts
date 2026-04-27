@@ -1,4 +1,4 @@
-export type SnowflakeRuntime = "auto" | "webgpu" | "pthread" | "wasm";
+export type SnowflakeRuntime = "auto" | "webgpu" | "wasm";
 export type SnowflakeRunnerMode = "ephemeral" | "persistent";
 type ResolvedRuntime = Exclude<SnowflakeRuntime, "auto">;
 export interface SnowflakeStatusEvent {
@@ -14,7 +14,6 @@ export interface SnowflakeEmbedderOptions {
     runtimeBaseUrl?: string;
     tokenizerUrl?: string;
     tokenizerScriptUrl?: string;
-    threads?: number;
     cache?: boolean;
     onStatus?: (event: SnowflakeStatusEvent) => void;
 }

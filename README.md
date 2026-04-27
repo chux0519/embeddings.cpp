@@ -277,8 +277,12 @@ pip install "embeddings-cpp[hub]"
 ## Browser Runtime
 
 The Snowflake production artifact also runs in Chromium through browser WASM and
-WebGPU. On an Apple M4 Mac mini with Chrome, browser-side `WebGPU` is clearly
-better than browser-side WASM for this model.
+Browser builds are available for the Snowflake GGUF. The npm-facing browser
+package currently defaults to stable single-thread `wasm`; `webgpu` is
+experimental because Snowflake-specific ggml ops still fall back to CPU until
+dedicated WebGPU kernels are added. The older engine-only browser benchmark
+below is useful for backend tracking, but it excludes tokenizer/package
+overhead and should not be read as the npm package default.
 
 Platform for the browser numbers below:
 
@@ -298,10 +302,8 @@ Platform for the browser numbers below:
 
 ![Browser benchmark on Apple M4 Chrome](docs/browser-benchmark-m4.svg)
 
-On this host, WebGPU stays ahead not just for a single short sentence, but also
-for mixed multilingual input and a more realistic short-query batch. The static
-demo is at [demo/browser-wasm/index.html](/home/yongsheng/repos/embeddings.cpp/demo/browser-wasm/index.html),
-and now supports both preload-based bundles and dynamic `GGUF` download mode.
+The static demo is at [demo/browser-wasm/index.html](/home/yongsheng/repos/embeddings.cpp/demo/browser-wasm/index.html),
+and supports both preload-based bundles and dynamic `GGUF` download mode.
 In downloaded mode, the page can fetch the published Snowflake `GGUF`, cache
 the browser runtime bundle plus model bytes in `Cache Storage`, and reuse them
 across reloads. The full method plus detailed numbers are in

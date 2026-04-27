@@ -130,7 +130,7 @@
         Run Snowflake embeddings in the browser and copy the full vector directly.
       </p>
       <p style="margin-top: 6px; font-size: 13px;">
-        Auto uses the stable WASM path. Explicit WebGPU and Pthreads selections run the same C++ model through the selected ggml backend.
+        Auto uses the stable WASM path. WebGPU is experimental for Snowflake because custom ggml ops currently fall back to CPU.
       </p>
     </section>
 
@@ -142,8 +142,7 @@
           <label class="label" for="runtime-mode">Runtime</label>
           <select id="runtime-mode">
             <option value="auto" selected>Auto</option>
-            <option value="webgpu">WebGPU</option>
-            <option value="pthread">Pthreads</option>
+            <option value="webgpu">WebGPU experimental</option>
             <option value="wasm">WASM</option>
           </select>
         </div>
@@ -205,7 +204,7 @@
   </main>
 
   <script type="module">
-    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webpkg21";
+    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webpkg22";
 
     const modelUrlEl = document.getElementById("model-url");
     const runtimeModeEl = document.getElementById("runtime-mode");

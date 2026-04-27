@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 
 const baseUrl = process.env.BASE_URL || "https://emb.potafree.net";
 const packageUrl =
-  process.env.PACKAGE_URL || `${baseUrl}/packages/web/dist/index.js?v=webpkg21`;
+  process.env.PACKAGE_URL || `${baseUrl}/packages/web/dist/index.js?v=webpkg22`;
 const pageUrl =
   process.env.PAGE_URL || `${baseUrl}/packages/web/examples/basic-browser.html`;
 const modelUrl =
@@ -12,7 +12,7 @@ const executablePath = process.env.EXECUTABLE_PATH || undefined;
 const runnerMode = process.env.RUNNER_MODE || "ephemeral";
 const timeoutMs = Number.parseInt(process.env.TIMEOUT_MS || "180000", 10);
 const minCosine = Number.parseFloat(process.env.MIN_COSINE || "0.995");
-const runtimes = (process.env.RUNTIMES || "wasm,webgpu,pthread")
+const runtimes = (process.env.RUNTIMES || "wasm,webgpu")
   .split(",")
   .map((value) => value.trim())
   .filter(Boolean);
@@ -156,10 +156,11 @@ async function runRuntimeWithOuterTimeout(runtime) {
     });
     await page.goto(pageUrl, { waitUntil: "load", timeout: timeoutMs });
 
+    let outerTimer = null;
     const result = await Promise.race([
       runRuntime(page, runtime),
       new Promise((resolve) => {
-        setTimeout(() => {
+        outerTimer = setTimeout(() => {
           resolve({
             ok: false,
             runtime,
@@ -169,7 +170,11 @@ async function runRuntimeWithOuterTimeout(runtime) {
           });
         }, timeoutMs);
       }),
-    ]);
+    ]).finally(() => {
+      if (outerTimer) {
+        clearTimeout(outerTimer);
+      }
+    });
     return {
       ...result,
       consoleMessages: consoleMessages.slice(-30),

@@ -35,6 +35,7 @@ Out of scope for v1:
 - generic multi-model registry
 - Node.js runtime
 - worker pools
+- pthread browser runtime until it is redesigned as a worker/proxy runner
 - reranking / cross-encoder APIs
 - custom tokenizer replacement
 
@@ -57,7 +58,7 @@ const many = await embedder.embedAll([
 ]);
 
 console.log(one.vector.length); // 768
-console.log(one.runtime);       // "webgpu" | "pthread" | "wasm"
+console.log(one.runtime);       // "wasm" | "webgpu"
 
 await embedder.dispose();
 ```
@@ -65,14 +66,13 @@ await embedder.dispose();
 ## Proposed API Surface
 
 ```ts
-export type SnowflakeRuntime = "auto" | "webgpu" | "pthread" | "wasm";
+export type SnowflakeRuntime = "auto" | "webgpu" | "wasm";
 
 export interface SnowflakeEmbedderOptions {
   modelUrl: string;
   runtime?: SnowflakeRuntime;
   runtimeBaseUrl?: string;
   tokenizerUrl?: string;
-  threads?: number;
   cache?: boolean;
 }
 
@@ -109,12 +109,19 @@ package easy to adopt and leaves batching as an implementation detail.
 
 `runtime: "auto"` should be the default:
 
-- prefer `webgpu`
-- then `pthread`
-- then single-thread wasm
+- use stable single-thread `wasm`
+- allow explicit `webgpu` for experimental testing
 
 `prefetch()` should let applications warm the browser cache before the first
 interactive request.
+
+Current runtime status:
+
+| Runtime | Status | Notes |
+|---|---|---|
+| `wasm` | Recommended default | Best current browser path for short Snowflake queries and the least fragile browser integration. |
+| `webgpu` | Experimental | Correctness is covered, but Snowflake custom ggml ops still fall back to CPU, so it can be slower until dedicated WebGPU kernels are implemented. |
+| `pthread` | Not exposed in v1 | The exported-function iframe runner can block the page. Re-enable only after a worker/proxy runner passes browser regression tests. |
 
 `runtimeBaseUrl` should point to a hosted directory that contains:
 

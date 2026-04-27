@@ -1,4 +1,4 @@
-export type SnowflakeRuntime = "auto" | "webgpu" | "pthread" | "wasm";
+export type SnowflakeRuntime = "auto" | "webgpu" | "wasm";
 export type SnowflakeRunnerMode = "ephemeral" | "persistent";
 type ResolvedRuntime = Exclude<SnowflakeRuntime, "auto">;
 
@@ -16,7 +16,6 @@ export interface SnowflakeEmbedderOptions {
   runtimeBaseUrl?: string;
   tokenizerUrl?: string;
   tokenizerScriptUrl?: string;
-  threads?: number;
   cache?: boolean;
   onStatus?: (event: SnowflakeStatusEvent) => void;
 }
@@ -81,11 +80,10 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg21";
+const RUNTIME_ASSET_VERSION = "webpkg22";
 
 const BUILD_DIRS: Record<ResolvedRuntime, string> = {
   wasm: "build-wasm-web-dyn",
-  pthread: "build-wasm-web-pthread-dyn",
   webgpu: "build-wasm-webgpu-browser-dyn",
 };
 
@@ -159,6 +157,9 @@ function ensureBrowser(): void {
 
 async function detectRuntime(preferred: SnowflakeRuntime): Promise<ResolvedRuntime> {
   if (preferred !== "auto") {
+    if (preferred !== "wasm" && preferred !== "webgpu") {
+      throw new Error(`unsupported browser runtime: ${preferred}`);
+    }
     return preferred;
   }
   return "wasm";
@@ -300,10 +301,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     if (this.options.runnerMode !== "persistent") {
       return this.options.runnerMode;
     }
-    if (this.runtime === "wasm" || this.runtime === "webgpu") {
-      return "persistent";
-    }
-    return "ephemeral";
+    return "persistent";
   }
 
   private usesRunnerApiTransport(): boolean {
@@ -480,9 +478,6 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
 
     if (this.runtime === "webgpu") {
       params.set("backend", "webgpu");
-    }
-    if (this.runtime === "pthread") {
-      params.set("threads", String(this.options.threads));
     }
 
     const runnerPage =
@@ -695,7 +690,6 @@ export async function createSnowflakeEmbedder(
     options.tokenizerUrl ?? joinUrl(runtimeBaseUrl, DEFAULT_TOKENIZER_JSON_PATH);
   const tokenizerScriptUrl =
     options.tokenizerScriptUrl ?? joinUrl(runtimeBaseUrl, DEFAULT_TOKENIZER_SCRIPT_PATH);
-  const detectedThreads = options.threads ?? navigator.hardwareConcurrency ?? 4;
 
   const resolved: Required<SnowflakeEmbedderOptions> = {
     modelUrl: options.modelUrl || DEFAULT_SNOWFLAKE_MODEL_URL,
@@ -704,7 +698,6 @@ export async function createSnowflakeEmbedder(
     runtimeBaseUrl,
     tokenizerUrl,
     tokenizerScriptUrl,
-    threads: Math.max(1, Math.min(12, detectedThreads)),
     cache: options.cache ?? true,
     onStatus: options.onStatus ?? (() => {}),
   };

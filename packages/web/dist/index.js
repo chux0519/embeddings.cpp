@@ -5,10 +5,9 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg21";
+const RUNTIME_ASSET_VERSION = "webpkg22";
 const BUILD_DIRS = {
     wasm: "build-wasm-web-dyn",
-    pthread: "build-wasm-web-pthread-dyn",
     webgpu: "build-wasm-webgpu-browser-dyn",
 };
 function browserOrigin() {
@@ -69,6 +68,9 @@ function ensureBrowser() {
 }
 async function detectRuntime(preferred) {
     if (preferred !== "auto") {
+        if (preferred !== "wasm" && preferred !== "webgpu") {
+            throw new Error(`unsupported browser runtime: ${preferred}`);
+        }
         return preferred;
     }
     return "wasm";
@@ -195,10 +197,7 @@ class BrowserSnowflakeEmbedder {
         if (this.options.runnerMode !== "persistent") {
             return this.options.runnerMode;
         }
-        if (this.runtime === "wasm" || this.runtime === "webgpu") {
-            return "persistent";
-        }
-        return "ephemeral";
+        return "persistent";
     }
     usesRunnerApiTransport() {
         return this.runtime !== "wasm" || this.effectiveRunnerMode() === "persistent";
@@ -349,9 +348,6 @@ class BrowserSnowflakeEmbedder {
         });
         if (this.runtime === "webgpu") {
             params.set("backend", "webgpu");
-        }
-        if (this.runtime === "pthread") {
-            params.set("threads", String(this.options.threads));
         }
         const runnerPage = this.usesRunnerApiTransport()
             ? "/scripts/wasm_persistent_encode_page.html"
@@ -529,7 +525,6 @@ export async function createSnowflakeEmbedder(options) {
     const runtimeBaseUrl = options.runtimeBaseUrl ?? (browserOrigin() || DEFAULT_RUNTIME_BASE_PATH);
     const tokenizerUrl = options.tokenizerUrl ?? joinUrl(runtimeBaseUrl, DEFAULT_TOKENIZER_JSON_PATH);
     const tokenizerScriptUrl = options.tokenizerScriptUrl ?? joinUrl(runtimeBaseUrl, DEFAULT_TOKENIZER_SCRIPT_PATH);
-    const detectedThreads = options.threads ?? navigator.hardwareConcurrency ?? 4;
     const resolved = {
         modelUrl: options.modelUrl || DEFAULT_SNOWFLAKE_MODEL_URL,
         runtime: options.runtime ?? "auto",
@@ -537,7 +532,6 @@ export async function createSnowflakeEmbedder(options) {
         runtimeBaseUrl,
         tokenizerUrl,
         tokenizerScriptUrl,
-        threads: Math.max(1, Math.min(12, detectedThreads)),
         cache: options.cache ?? true,
         onStatus: options.onStatus ?? (() => { }),
     };

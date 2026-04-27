@@ -3,6 +3,12 @@
 This document tracks browser-side performance for
 `Snowflake/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`.
 
+Package status: `@embeddings-cpp/web` currently defaults to stable
+single-thread `wasm`. `webgpu` is exposed as experimental because
+Snowflake-specific ggml ops fall back to CPU until dedicated WebGPU kernels are
+implemented. `pthread` is not exposed by the npm package until it is redesigned
+as a worker/proxy runner.
+
 Scope:
 
 - browser only
@@ -128,9 +134,9 @@ For a productized browser path, the useful minimum is:
    - `Cache Storage` for fetched bundles
    - `IndexedDB` or `OPFS` for model files when moving away from preload
 5. Keep runtime selection simple:
-   - prefer `WebGPU`
-   - fall back to `pthread`
-   - fall back to single-thread WASM
+   - use single-thread WASM by default
+   - allow explicit experimental `WebGPU`
+   - keep `pthread` out of the public package until the runner is redesigned
 
 The demo now supports both paths:
 

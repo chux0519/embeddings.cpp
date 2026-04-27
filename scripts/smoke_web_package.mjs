@@ -21,8 +21,7 @@ async function main() {
     const embedder = await mod.createSnowflakeEmbedder({
       modelUrl: `${window.location.origin}/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`,
       runtimeBaseUrl: window.location.origin,
-      runtime: window.crossOriginIsolated ? "pthread" : "wasm",
-      threads: 8,
+      runtime: "wasm",
       cache: true,
     });
     const output = await embedder.embed("你好，世界。请把这句话编码成 embedding 向量。");

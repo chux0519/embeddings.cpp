@@ -196,4 +196,4 @@ Tracked follow-up items:
 - document the Kubernetes migration from TEI to `embeddings.cpp`;
 - keep `docs/GGML_OVERLAY_PATCHES.md` current before each ggml upstream refresh;
 - implement missing Snowflake WebGPU kernels in the documented order;
-- fix browser `pthread` after WebGPU persistent is closed out.
+- redesign browser `pthread` as a worker/proxy runner before exposing it again.

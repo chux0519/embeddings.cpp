@@ -61,9 +61,9 @@ const { chromium } = require('playwright');
   const browser = await chromium.launch({ headless: true, args: ['--enable-features=SharedArrayBuffer'] });
   const context = await browser.newContext({ serviceWorkers: 'block' });
   const page = await context.newPage();
-  const url = process.env.BASE_URL + '/scripts/wasm_encode_page.html?build=build-wasm-web-pthread-dyn&model_url=' +
+  const url = process.env.BASE_URL + '/scripts/wasm_encode_page.html?build=build-wasm-web-dyn&model_url=' +
     encodeURIComponent(process.env.BASE_URL + '/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf') +
-    '&pooling=cls&threads=8';
+    '&pooling=cls';
   await page.goto(url, { waitUntil: 'load', timeout: 120000 });
   await page.evaluate((line) => { window.postMessage({ type: 'encode-request', batchLine: line }, '*'); }, process.env.BATCH_LINE);
   await page.waitForFunction(() => document.querySelector('#log')?.textContent.includes('\"vectors\": ['), { timeout: 120000 });
