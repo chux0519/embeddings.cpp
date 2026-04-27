@@ -68,14 +68,26 @@ if (EMBEDDINGS_CPP_BUILD_WASM_TOOLS)
 
     if (EMSCRIPTEN)
         set(EMBEDDINGS_WASM_ASSERTIONS "0" CACHE STRING "embeddings.cpp: Emscripten ASSERTIONS value for browser wasm runners")
+        set(EMBEDDINGS_WASM_ASYNC_MODE "JSPI" CACHE STRING "embeddings.cpp: Emscripten async mode for browser wasm runners (JSPI or ASYNCIFY)")
+        set_property(CACHE EMBEDDINGS_WASM_ASYNC_MODE PROPERTY STRINGS "JSPI" "ASYNCIFY" "NONE")
         target_link_options(embedding_wasm_model_runner PRIVATE
             "SHELL:-sALLOW_MEMORY_GROWTH=1"
             "SHELL:-sASSERTIONS=${EMBEDDINGS_WASM_ASSERTIONS}"
             "SHELL:-sNO_EXIT_RUNTIME=1"
-            "SHELL:-sJSPI_EXPORTS=['runner_init','runner_encode','runner_encode_inline']"
             "SHELL:-sEXPORTED_FUNCTIONS=['_runner_init','_runner_encode','_runner_encode_inline','_runner_last_json','_runner_last_error','_runner_reset']"
             "SHELL:-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString']"
         )
+        if (EMBEDDINGS_WASM_ASYNC_MODE STREQUAL "JSPI")
+            target_link_options(embedding_wasm_model_runner PRIVATE
+                "SHELL:-sJSPI_EXPORTS=['runner_init','runner_encode','runner_encode_inline']"
+            )
+        elseif (EMBEDDINGS_WASM_ASYNC_MODE STREQUAL "ASYNCIFY")
+            target_link_options(embedding_wasm_model_runner PRIVATE
+                "SHELL:-sASYNCIFY=1"
+            )
+        elseif (NOT EMBEDDINGS_WASM_ASYNC_MODE STREQUAL "NONE")
+            message(FATAL_ERROR "Unsupported EMBEDDINGS_WASM_ASYNC_MODE: ${EMBEDDINGS_WASM_ASYNC_MODE}")
+        endif ()
     endif ()
 endif ()
 

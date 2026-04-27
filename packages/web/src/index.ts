@@ -80,7 +80,7 @@ declare global {
 export const DEFAULT_SNOWFLAKE_MODEL_URL =
   "https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf";
 
-const RUNTIME_ASSET_VERSION = "webgpu-tile-m4n8-assert-20260428";
+const RUNTIME_ASSET_VERSION = "webgpu-asyncify-20260428";
 const DEFAULT_SNOWFLAKE_ASSET_BASE_URL =
   `https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/browser/${RUNTIME_ASSET_VERSION}/`;
 const DEFAULT_RUNTIME_BASE_PATH = DEFAULT_SNOWFLAKE_ASSET_BASE_URL;
@@ -94,6 +94,15 @@ const BUILD_DIRS: Record<ResolvedRuntime, string> = {
   wasm: "build-wasm-web-dyn",
   webgpu: "build-wasm-webgpu-browser-dyn",
 };
+const WEBGPU_ASYNCIFY_BUILD_DIR = "build-wasm-webgpu-browser-dyn-asyncify";
+
+function supportsJspi(): boolean {
+  const wasmObject = WebAssembly as typeof WebAssembly & {
+    Suspending?: unknown;
+    promising?: unknown;
+  };
+  return typeof wasmObject.Suspending === "function" && typeof wasmObject.promising === "function";
+}
 
 function browserOrigin(): string {
   if (typeof window === "undefined" || !window.location?.origin) {
@@ -470,7 +479,14 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
   }
 
   private buildDir(): string {
-    return this.options.runtimeBuildDirs[this.runtime] || BUILD_DIRS[this.runtime];
+    const override = this.options.runtimeBuildDirs[this.runtime];
+    if (override) {
+      return override;
+    }
+    if (this.runtime === "webgpu" && !supportsJspi()) {
+      return WEBGPU_ASYNCIFY_BUILD_DIR;
+    }
+    return BUILD_DIRS[this.runtime];
   }
 
   private runtimeAssetUrl(path: string): string {

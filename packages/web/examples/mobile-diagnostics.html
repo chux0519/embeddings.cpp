@@ -188,13 +188,15 @@
   </main>
 
   <script type="module">
-    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webgpu-tile-m4n8-assert-20260428";
+    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webgpu-asyncify-20260428";
 
     const urlParams = new URLSearchParams(window.location.search);
     const runtimeBuildDirs = urlParams.get("assert") === "1"
       ? {
           wasm: "build-wasm-web-dyn-assert",
-          webgpu: "build-wasm-webgpu-browser-dyn-assert",
+          webgpu: typeof WebAssembly.Suspending === "function" && typeof WebAssembly.promising === "function"
+            ? "build-wasm-webgpu-browser-dyn-assert"
+            : "build-wasm-webgpu-browser-dyn-asyncify-assert",
         }
       : undefined;
     const cpuRepack = urlParams.get("repack") === "0" ? false : undefined;

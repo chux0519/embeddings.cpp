@@ -1,5 +1,5 @@
 export const DEFAULT_SNOWFLAKE_MODEL_URL = "https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf";
-const RUNTIME_ASSET_VERSION = "webgpu-tile-m4n8-assert-20260428";
+const RUNTIME_ASSET_VERSION = "webgpu-asyncify-20260428";
 const DEFAULT_SNOWFLAKE_ASSET_BASE_URL = `https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/browser/${RUNTIME_ASSET_VERSION}/`;
 const DEFAULT_RUNTIME_BASE_PATH = DEFAULT_SNOWFLAKE_ASSET_BASE_URL;
 const DEFAULT_TOKENIZER_JSON_PATH = "demo/browser-wasm/assets/snowflake-tokenizer.json";
@@ -11,6 +11,11 @@ const BUILD_DIRS = {
     wasm: "build-wasm-web-dyn",
     webgpu: "build-wasm-webgpu-browser-dyn",
 };
+const WEBGPU_ASYNCIFY_BUILD_DIR = "build-wasm-webgpu-browser-dyn-asyncify";
+function supportsJspi() {
+    const wasmObject = WebAssembly;
+    return typeof wasmObject.Suspending === "function" && typeof wasmObject.promising === "function";
+}
 function browserOrigin() {
     if (typeof window === "undefined" || !window.location?.origin) {
         return "";
@@ -336,7 +341,14 @@ class BrowserSnowflakeEmbedder {
         return this.options.tokenizerScriptUrl;
     }
     buildDir() {
-        return this.options.runtimeBuildDirs[this.runtime] || BUILD_DIRS[this.runtime];
+        const override = this.options.runtimeBuildDirs[this.runtime];
+        if (override) {
+            return override;
+        }
+        if (this.runtime === "webgpu" && !supportsJspi()) {
+            return WEBGPU_ASYNCIFY_BUILD_DIR;
+        }
+        return BUILD_DIRS[this.runtime];
     }
     runtimeAssetUrl(path) {
         return withVersion(joinUrl(this.runtimeBaseUrl(), path));

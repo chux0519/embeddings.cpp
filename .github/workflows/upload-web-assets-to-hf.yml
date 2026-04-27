@@ -102,7 +102,8 @@ jobs:
             "${root}/demo/browser-wasm/assets" \
             "${root}/demo/browser-wasm/vendor" \
             "${root}/build-wasm-web-dyn" \
-            "${root}/build-wasm-webgpu-browser-dyn"
+            "${root}/build-wasm-webgpu-browser-dyn" \
+            "${root}/build-wasm-webgpu-browser-dyn-asyncify"
 
           cp scripts/wasm_encode_page.html "${root}/scripts/"
           cp scripts/wasm_persistent_encode_page.html "${root}/scripts/"
@@ -118,6 +119,9 @@ jobs:
           cp build-wasm-webgpu-browser-dyn/embedding_wasm_model_encode.wasm "${root}/build-wasm-webgpu-browser-dyn/"
           cp build-wasm-webgpu-browser-dyn/embedding_wasm_model_runner.js "${root}/build-wasm-webgpu-browser-dyn/"
           cp build-wasm-webgpu-browser-dyn/embedding_wasm_model_runner.wasm "${root}/build-wasm-webgpu-browser-dyn/"
+
+          cp build-wasm-webgpu-browser-dyn-asyncify/embedding_wasm_model_runner.js "${root}/build-wasm-webgpu-browser-dyn-asyncify/"
+          cp build-wasm-webgpu-browser-dyn-asyncify/embedding_wasm_model_runner.wasm "${root}/build-wasm-webgpu-browser-dyn-asyncify/"
 
           uv run python - <<'PY'
           import json
@@ -148,6 +152,7 @@ jobs:
                   },
                   "webgpu": {
                       "build_dir": "build-wasm-webgpu-browser-dyn",
+                      "asyncify_build_dir": "build-wasm-webgpu-browser-dyn-asyncify",
                       "experimental": True,
                   },
               },

@@ -28,7 +28,7 @@ cd "$ROOT_DIR"
 common_flags="-sALLOW_MEMORY_GROWTH=1 -sASSERTIONS=0 -sEXIT_RUNTIME=1"
 pthread_flags="${common_flags} -sUSE_PTHREADS=1 -sPTHREAD_POOL_SIZE=${THREADS} -pthread"
 
-rm -rf build-wasm-web-dyn build-wasm-web-pthread-dyn build-wasm-webgpu-browser-dyn
+rm -rf build-wasm-web-dyn build-wasm-web-pthread-dyn build-wasm-webgpu-browser-dyn build-wasm-webgpu-browser-dyn-asyncify
 
 emcmake "$CMAKE_BIN" -S . -B build-wasm-web-dyn \
   -DGGML_WEBGPU=OFF \
@@ -59,3 +59,12 @@ fi
 emcmake "$CMAKE_BIN" -S . -B build-wasm-webgpu-browser-dyn "${webgpu_args[@]}"
 "$CMAKE_BIN" --build build-wasm-webgpu-browser-dyn --target embedding_wasm_model_bench embedding_wasm_model_encode -j"$BUILD_JOBS"
 "$CMAKE_BIN" --build build-wasm-webgpu-browser-dyn --target embedding_wasm_model_runner -j"$BUILD_JOBS"
+
+webgpu_asyncify_args=(
+  "${webgpu_args[@]}"
+  -DGGML_WEBGPU_JSPI=OFF
+  -DEMBEDDINGS_WASM_ASYNC_MODE=ASYNCIFY
+)
+
+emcmake "$CMAKE_BIN" -S . -B build-wasm-webgpu-browser-dyn-asyncify "${webgpu_asyncify_args[@]}"
+"$CMAKE_BIN" --build build-wasm-webgpu-browser-dyn-asyncify --target embedding_wasm_model_runner -j"$BUILD_JOBS"
