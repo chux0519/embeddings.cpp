@@ -330,13 +330,13 @@
       }
 
       const script = document.createElement("script");
-      script.src = "/" + buildDir + "/embedding_wasm_model_runner.js";
+      script.src = "/" + buildDir + "/embedding_wasm_model_runner.js?v=runnerfix1";
       postStatus("runtime-script-loading", script.src);
       script.onload = function () {
         postStatus("runtime-script-ready", script.src);
       };
       script.onerror = function () {
-        const error = "failed to load persistent runner script";
+        const error = `failed to load persistent runner script: ${script.src}`;
         status.textContent = "load-error";
         postStatus("load-error", error);
         window.parent.postMessage({ type: "encode-result", result: null, error }, "*");
