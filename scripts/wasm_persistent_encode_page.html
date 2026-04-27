@@ -30,6 +30,7 @@
       let moduleReady = false;
       let requestBusy = false;
       let requestQueue = [];
+      let preparedModelBytes = null;
 
       function append(line) {
         log.textContent += line + "\n";
@@ -199,14 +200,11 @@
         return bytes;
       }
 
-      async function prepareModelFile() {
+      async function prepareModelBytesToMemory() {
         if (!modelUrl) {
           return;
         }
-        ensureDir(modelPath.slice(0, modelPath.lastIndexOf("/")));
-        const bytes = await fetchCachedBytes(modelUrl, fileCacheKey("model", modelUrl));
-        FS.writeFile(modelPath, bytes);
-        postStatus("file-ready", modelPath);
+        preparedModelBytes = await fetchCachedBytes(modelUrl, fileCacheKey("model", modelUrl));
       }
 
       function tryProcessQueue() {
@@ -265,6 +263,16 @@
 
       window.Module = {
         noInitialRun: true,
+        preRun: [function () {
+          if (preparedModelBytes) {
+            const slash = modelPath.lastIndexOf("/");
+            if (slash > 0) {
+              ensureDir(modelPath.slice(0, slash));
+            }
+            FS.writeFile(modelPath, preparedModelBytes);
+            postStatus("file-ready", modelPath);
+          }
+        }],
         locateFile: function (path) {
           return "/" + buildDir + "/" + path;
         },
@@ -312,7 +320,7 @@
       };
 
       try {
-        await prepareModelFile();
+        await prepareModelBytesToMemory();
       } catch (err) {
         const message = String(err && err.message ? err.message : err);
         status.textContent = "prepare-error";
