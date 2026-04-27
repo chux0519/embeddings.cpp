@@ -11,7 +11,7 @@ on:
       web_asset_version:
         description: "Browser asset version directory"
         required: true
-        default: "webpkg22"
+        default: "v0.1.0"
         type: string
       hf_repo_id:
         description: "Override target Hugging Face model repo. Leave empty to use registry."

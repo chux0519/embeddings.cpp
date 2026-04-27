@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 
 const baseUrl = process.env.BASE_URL || "https://emb.potafree.net";
 const packageUrl =
-  process.env.PACKAGE_URL || `${baseUrl}/packages/web/dist/index.js?v=webpkg22`;
+  process.env.PACKAGE_URL || `${baseUrl}/packages/web/dist/index.js?v=v0.1.0`;
 const pageUrl =
   process.env.PAGE_URL || `${baseUrl}/packages/web/examples/basic-browser.html`;
 const modelUrl =

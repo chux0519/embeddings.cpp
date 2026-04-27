@@ -70,7 +70,7 @@ assets to the same HF repository under:
 browser/<web_asset_version>/
 ```
 
-The npm package default for Snowflake points at the `webpkg22` directory. The
+The npm package default for Snowflake points at the `v0.1.0` directory. The
 workflow also writes `web-assets.json` at the repo root and inside the versioned
 browser directory so later clients can discover the exact runtime files from a
 manifest instead of hard-coded paths.
@@ -112,14 +112,16 @@ in place for wheel validation and PyPI publishing.
 
 Planned release path:
 
-1. Build validation wheels with `.github/workflows/build-python-wheels.yml`.
-2. Publish with `.github/workflows/publish-python-package.yml` on `v*` tags or
+1. Run `python scripts/set_version.py <version>` and
+   `python scripts/check_version.py`.
+2. Build validation wheels with `.github/workflows/build-python-wheels.yml`.
+3. Publish with `.github/workflows/publish-python-package.yml` on `v*` tags or
    manual dispatch.
-3. Configure PyPI Trusted Publishing for the `pypi` GitHub environment.
-4. Keep `GGML_NATIVE=OFF` for PyPI wheels. Use `EMBEDDINGS_CPP_NATIVE=1` only
+4. Configure PyPI Trusted Publishing for the `pypi` GitHub environment.
+5. Keep `GGML_NATIVE=OFF` for PyPI wheels. Use `EMBEDDINGS_CPP_NATIVE=1` only
    for local source builds or machine-specific images.
-5. Linux `riscv64` is included as an experimental wheel build target and is
-   gated for publishing until the wheel tag is accepted for the release path.
+6. Linux `riscv64` is a tier-1 wheel target alongside Linux `x86_64`, macOS
+   `arm64`, and Windows `x86_64`.
 
 Required PyPI setup:
 
@@ -135,6 +137,11 @@ No long-lived PyPI token is required when Trusted Publishing is configured.
 
 `.github/workflows/publish-web-package.yml` publishes `@embeddings-cpp/web` on
 `web-v*` tags or manual dispatch.
+
+Use the same version as the Python package. Browser assets are stored under
+`browser/v<version>/`, and `scripts/check_version.py` enforces that the npm
+package, Python package, browser asset URL, and demo cache-busting query all
+match.
 
 Required npm setup:
 

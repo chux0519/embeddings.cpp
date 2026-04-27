@@ -157,7 +157,7 @@ Version 1 can assume these defaults:
 Current default asset base:
 
 ```text
-https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/browser/webpkg22/
+https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/browser/v0.1.0/
 ```
 
 The upload workflow writes:

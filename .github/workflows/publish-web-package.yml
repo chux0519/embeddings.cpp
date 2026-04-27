@@ -33,6 +33,10 @@ jobs:
       - name: Install package dependencies
         run: npm ci
 
+      - name: Check version consistency
+        working-directory: .
+        run: python scripts/check_version.py
+
       - name: Typecheck
         run: npm run typecheck
 

@@ -2,12 +2,6 @@ name: Publish Python Package
 
 on:
   workflow_dispatch:
-    inputs:
-      include_riscv64:
-        description: "Build experimental Linux riscv64 wheels. Keep disabled until PyPI accepts the tag for this project."
-        required: true
-        default: false
-        type: boolean
   push:
     tags:
       - "v*"
@@ -27,6 +21,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Check version consistency
+        run: python scripts/check_version.py
 
       - name: Build sdist
         run: |
@@ -49,6 +46,9 @@ jobs:
           - name: linux-x86_64
             os: ubuntu-24.04
             archs: x86_64
+          - name: linux-riscv64
+            os: ubuntu-24.04
+            archs: riscv64
           - name: macos-arm64
             os: macos-14
             archs: arm64
@@ -61,9 +61,18 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set up QEMU for riscv64
+        if: matrix.archs == 'riscv64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: riscv64
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Check version consistency
+        run: python scripts/check_version.py
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -78,40 +87,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: python-wheels-${{ matrix.name }}
-          path: wheelhouse/*.whl
-
-  riscv64-wheel:
-    name: linux-riscv64
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.include_riscv64 == 'true'
-    runs-on: ubuntu-24.04
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Set up QEMU for riscv64
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: riscv64
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cibuildwheel
-        run: python -m pip install cibuildwheel==3.4.1
-
-      - name: Build experimental riscv64 wheel
-        env:
-          CIBW_ARCHS: riscv64
-        run: python -m cibuildwheel --output-dir wheelhouse
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: python-wheels-linux-riscv64-experimental
           path: wheelhouse/*.whl
 
   publish:

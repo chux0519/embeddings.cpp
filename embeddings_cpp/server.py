@@ -5,6 +5,7 @@ import os
 import time
 from typing import Any
 
+from embeddings_cpp import __version__
 from embeddings_cpp import load
 
 
@@ -21,7 +22,7 @@ def _make_app(
         raise ImportError("Install embeddings.cpp with the 'server' extra to run the HTTP server.") from exc
 
     model = load(model_id, gguf_path=gguf_path, cache_dir=cache_dir)
-    app = FastAPI(title="embeddings.cpp server", version="0.1.0")
+    app = FastAPI(title="embeddings.cpp server", version=__version__)
     started_at = time.time()
 
     def normalize_inputs(value: str | list[str]) -> list[str]:

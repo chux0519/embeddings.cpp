@@ -15,8 +15,8 @@
   <script>
     (async function () {
       const params = new URLSearchParams(window.location.search);
-      const buildDir = params.get("build") || "build-wasm-web-pthread-dyn";
-      const assetVersion = params.get("v") || "runnerfix3";
+      const buildDir = params.get("build") || "build-wasm-web-dyn";
+      const assetVersion = params.get("v") || "v0.1.0";
       const backend = params.get("backend") || "";
       const threads = params.get("threads");
       const pooling = params.get("pooling") || "cls";
