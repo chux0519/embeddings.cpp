@@ -420,6 +420,42 @@ class BrowserSnowflakeEmbedder {
             await new Promise((resolve) => {
                 this.iframe.onload = () => resolve();
             });
+            await new Promise((resolve, reject) => {
+                const iframe = this.iframe;
+                let settled = false;
+                const ping = window.setInterval(() => {
+                    iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
+                }, 250);
+                const timeout = window.setTimeout(() => {
+                    cleanup();
+                    reject(new Error("runner did not reach waiting-request"));
+                }, 30000);
+                const cleanup = () => {
+                    if (settled) {
+                        return;
+                    }
+                    settled = true;
+                    window.clearInterval(ping);
+                    window.clearTimeout(timeout);
+                    window.removeEventListener("message", onMessage);
+                };
+                const onMessage = (event) => {
+                    if (event.source !== iframe.contentWindow) {
+                        return;
+                    }
+                    const data = event.data;
+                    if (!data || data.type !== "encode-status") {
+                        return;
+                    }
+                    this.emit(data.stage || "encode-status", data.detail);
+                    if (data.stage === "waiting-request") {
+                        cleanup();
+                        resolve();
+                    }
+                };
+                window.addEventListener("message", onMessage);
+                iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
+            });
             this.emit("runtime-page-ready");
         }
         return this.iframe;
