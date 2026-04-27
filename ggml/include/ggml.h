@@ -528,6 +528,7 @@ extern "C" {
         GGML_OP_GTE_CLS_POOL,
         GGML_OP_GTE_GEGLU,
         GGML_OP_GTE_NORM_AFFINE,
+        GGML_OP_GTE_ADD_NORM_AFFINE,
         GGML_OP_GTE_LINEAR,
         GGML_OP_CLAMP,
         GGML_OP_CONV_TRANSPOSE_1D,
@@ -1992,6 +1993,15 @@ extern "C" {
     GGML_API struct ggml_tensor * ggml_gte_norm_affine(
             struct ggml_context * ctx,
             struct ggml_tensor  * inp,
+            struct ggml_tensor  * weight,
+            struct ggml_tensor  * bias,
+            float                 eps);
+
+    // Snowflake/GTE helper: residual add followed by layer norm, weight, and bias.
+    GGML_API struct ggml_tensor * ggml_gte_add_norm_affine(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * inp,
+            struct ggml_tensor  * residual,
             struct ggml_tensor  * weight,
             struct ggml_tensor  * bias,
             float                 eps);

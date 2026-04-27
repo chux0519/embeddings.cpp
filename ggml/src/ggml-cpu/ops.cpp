@@ -6092,6 +6092,58 @@ void ggml_compute_forward_gte_norm_affine(
     }
 }
 
+void ggml_compute_forward_gte_add_norm_affine(
+        const ggml_compute_params * params,
+        ggml_tensor * dst) {
+    const ggml_tensor * inp = dst->src[0];
+    const ggml_tensor * residual = dst->src[1];
+    const ggml_tensor * weight = dst->src[2];
+    const ggml_tensor * bias = dst->src[3];
+
+    GGML_ASSERT(inp->type == GGML_TYPE_F32);
+    GGML_ASSERT(residual->type == GGML_TYPE_F32);
+    GGML_ASSERT(weight->type == GGML_TYPE_F32);
+    GGML_ASSERT(bias->type == GGML_TYPE_F32);
+    GGML_ASSERT(dst->type == GGML_TYPE_F32);
+    GGML_ASSERT(inp->ne[0] == dst->ne[0]);
+    GGML_ASSERT(residual->ne[0] == dst->ne[0]);
+    GGML_ASSERT(weight->ne[0] == dst->ne[0]);
+    GGML_ASSERT(bias->ne[0] == dst->ne[0]);
+
+    const int ith = params->ith;
+    const int nth = params->nth;
+    const int64_t hidden = dst->ne[0];
+    const int64_t rows = ggml_nrows(inp);
+    const int64_t r0 = (rows * ith) / nth;
+    const int64_t r1 = (rows * (ith + 1)) / nth;
+    const float eps = ggml_get_op_params_f32(dst, 0);
+    const float * w = (const float *) weight->data;
+    const float * b = (const float *) bias->data;
+
+    for (int64_t row = r0; row < r1; ++row) {
+        const float * x = (const float *) ((const char *) inp->data + row * inp->nb[1]);
+        const float * r = (const float *) ((const char *) residual->data + row * residual->nb[1]);
+        float * y = (float *) ((char *) dst->data + row * dst->nb[1]);
+
+        double sum = 0.0;
+        double sq = 0.0;
+        for (int64_t i = 0; i < hidden; ++i) {
+            const float v = x[i] + r[i];
+            sum += v;
+            sq += (double) v * v;
+        }
+
+        const float mean = (float) (sum / hidden);
+        const float var = (float) (sq / hidden - (double) mean * mean);
+        const float inv_std = 1.0f / sqrtf(var + eps);
+
+        for (int64_t i = 0; i < hidden; ++i) {
+            const float v = x[i] + r[i];
+            y[i] = ((v - mean) * inv_std) * w[i] + b[i];
+        }
+    }
+}
+
 void ggml_compute_forward_gte_linear(
         const ggml_compute_params * params,
         ggml_tensor * dst) {

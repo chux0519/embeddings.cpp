@@ -745,6 +745,7 @@ class ggml_webgpu_shader_lib {
     std::unordered_map<int, webgpu_pipeline> gte_cls_pool_pipelines;   // key is fixed, no variants yet
     std::unordered_map<int, webgpu_pipeline> gte_qkv_rope_pipelines;   // key is include_v
     std::unordered_map<int, webgpu_pipeline> gte_norm_affine_pipelines; // key is fixed, no variants yet
+    std::unordered_map<int, webgpu_pipeline> gte_add_norm_affine_pipelines; // key is fixed, no variants yet
     std::unordered_map<ggml_webgpu_row_norm_pipeline_key, webgpu_pipeline, ggml_webgpu_row_norm_pipeline_key_hash>
         row_norm_pipelines;                                            // op/inplace
     std::unordered_map<ggml_webgpu_get_rows_pipeline_key, webgpu_pipeline, ggml_webgpu_get_rows_pipeline_key_hash>
@@ -888,6 +889,21 @@ class ggml_webgpu_shader_lib {
         auto processed = preprocessor.preprocess(wgsl_gte_norm_affine, defines);
         gte_norm_affine_pipelines[1] = ggml_webgpu_create_pipeline(device, processed, "gte_norm_affine");
         return gte_norm_affine_pipelines[1];
+    }
+
+    webgpu_pipeline get_gte_add_norm_affine_pipeline(const ggml_webgpu_shader_lib_context & context) {
+        auto it = gte_add_norm_affine_pipelines.find(1);
+        if (it != gte_add_norm_affine_pipelines.end()) {
+            return it->second;
+        }
+
+        const uint32_t norm_wg_size = std::min(context.max_wg_size, 256u);
+        std::vector<std::string> defines;
+        defines.push_back(std::string("WG_SIZE=") + std::to_string(norm_wg_size));
+
+        auto processed = preprocessor.preprocess(wgsl_gte_add_norm_affine, defines);
+        gte_add_norm_affine_pipelines[1] = ggml_webgpu_create_pipeline(device, processed, "gte_add_norm_affine");
+        return gte_add_norm_affine_pipelines[1];
     }
 
     webgpu_pipeline get_row_norm_pipeline(const ggml_webgpu_shader_lib_context & context) {

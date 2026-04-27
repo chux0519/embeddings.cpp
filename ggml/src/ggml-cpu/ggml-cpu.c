@@ -1902,6 +1902,10 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
             {
                 ggml_compute_forward_gte_norm_affine(params, tensor);
             } break;
+        case GGML_OP_GTE_ADD_NORM_AFFINE:
+            {
+                ggml_compute_forward_gte_add_norm_affine(params, tensor);
+            } break;
         case GGML_OP_GTE_LINEAR:
             {
                 ggml_compute_forward_gte_linear(params, tensor);
@@ -2457,6 +2461,7 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
                 n_tasks = MIN(n_threads, MAX(1, (int) node->ne[1]));
             } break;
         case GGML_OP_GTE_NORM_AFFINE:
+        case GGML_OP_GTE_ADD_NORM_AFFINE:
             {
                 n_tasks = MIN(n_threads, MAX(1, (int) ggml_nrows(node)));
             } break;

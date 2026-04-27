@@ -256,6 +256,19 @@ static ggml_tensor *ggml_norm_affine_inplace(struct ggml_context *ctx,
   return x;
 }
 
+static ggml_tensor *ggml_add_norm_affine_inplace(struct ggml_context *ctx,
+                                                 struct ggml_tensor *x,
+                                                 struct ggml_tensor *residual,
+                                                 struct ggml_tensor *weight,
+                                                 struct ggml_tensor *bias,
+                                                 float eps) {
+  if (use_gte_fused_norm()) {
+    return ggml_gte_add_norm_affine(ctx, x, residual, weight, bias, eps);
+  }
+  x = gte_add(ctx, x, residual);
+  return ggml_norm_affine_inplace(ctx, x, weight, bias, eps);
+}
+
 // === helper for rotary embedding cache ===
 static std::pair<std::vector<float>, std::vector<float>> build_rope_cache(
     const std::vector<int32_t> &positions, int dim, float rope_theta) {
@@ -701,10 +714,9 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
     }
 
     auto *proj = gte_linear(ctx0, layer.o_proj_w, attn, layer.o_proj_b);
-    auto *res = gte_add(ctx0, proj, inpL);
-    res = ggml_norm_affine_inplace(ctx0, res, layer.attn_ln_w,
-                                   layer.attn_ln_b,
-                                   gte_hparams->layer_norm_eps);
+    auto *res = ggml_add_norm_affine_inplace(
+        ctx0, proj, inpL, layer.attn_ln_w, layer.attn_ln_b,
+        gte_hparams->layer_norm_eps);
 
     const int hidden_features = gte_hparams->intermediate_size;
     struct ggml_tensor *up_gate =
@@ -726,9 +738,9 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
     struct ggml_tensor *ffn =
         gte_linear(ctx0, layer.down_proj_w, gated_states, layer.down_proj_b);
 
-    inpL = gte_add(ctx0, ffn, res);
-    inpL = ggml_norm_affine_inplace(ctx0, inpL, layer.mlp_ln_w, layer.mlp_ln_b,
-                                    gte_hparams->layer_norm_eps);
+    inpL = ggml_add_norm_affine_inplace(
+        ctx0, ffn, res, layer.mlp_ln_w, layer.mlp_ln_b,
+        gte_hparams->layer_norm_eps);
   }
 
   struct ggml_tensor *pooled = nullptr;

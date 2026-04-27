@@ -1025,6 +1025,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "GTE_CLS_POOL",
     "GTE_GEGLU",
     "GTE_NORM_AFFINE",
+    "GTE_ADD_NORM_AFFINE",
     "GTE_LINEAR",
     "CLAMP",
     "CONV_TRANSPOSE_1D",
@@ -1080,7 +1081,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
     "GLU",
 };
 
-static_assert(GGML_OP_COUNT == 101, "GGML_OP_COUNT != 101");
+static_assert(GGML_OP_COUNT == 102, "GGML_OP_COUNT != 102");
 
 static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "none",
@@ -1140,6 +1141,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "gte_cls_pool(x)",
     "gte_geglu(x)",
     "gte_norm_affine(x)",
+    "gte_add_norm_affine(x, residual)",
     "gte_linear(x)",
     "clamp(x)",
     "conv_transpose_1d(x)",
@@ -1195,7 +1197,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
     "glu(x)",
 };
 
-static_assert(GGML_OP_COUNT == 101, "GGML_OP_COUNT != 101");
+static_assert(GGML_OP_COUNT == 102, "GGML_OP_COUNT != 102");
 
 static_assert(GGML_OP_POOL_COUNT == 2, "GGML_OP_POOL_COUNT != 2");
 
@@ -4481,6 +4483,37 @@ struct ggml_tensor * ggml_gte_norm_affine(
     result->src[0] = inp;
     result->src[1] = weight;
     result->src[2] = bias;
+
+    return result;
+}
+
+struct ggml_tensor * ggml_gte_add_norm_affine(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * inp,
+        struct ggml_tensor  * residual,
+        struct ggml_tensor  * weight,
+        struct ggml_tensor  * bias,
+        float                 eps) {
+    GGML_ASSERT(inp->type == GGML_TYPE_F32);
+    GGML_ASSERT(residual->type == GGML_TYPE_F32);
+    GGML_ASSERT(weight->type == GGML_TYPE_F32);
+    GGML_ASSERT(bias->type == GGML_TYPE_F32);
+    GGML_ASSERT(ggml_are_same_shape(inp, residual));
+    GGML_ASSERT(weight->ne[0] == inp->ne[0]);
+    GGML_ASSERT(bias->ne[0] == inp->ne[0]);
+    GGML_ASSERT(ggml_is_contiguous(inp));
+    GGML_ASSERT(ggml_is_contiguous(residual));
+    GGML_ASSERT(ggml_is_vector(weight));
+    GGML_ASSERT(ggml_is_vector(bias));
+
+    struct ggml_tensor * result = ggml_dup_tensor(ctx, inp);
+    ggml_set_op_params_f32(result, 0, eps);
+
+    result->op     = GGML_OP_GTE_ADD_NORM_AFFINE;
+    result->src[0] = inp;
+    result->src[1] = residual;
+    result->src[2] = weight;
+    result->src[3] = bias;
 
     return result;
 }

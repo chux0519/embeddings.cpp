@@ -66,6 +66,7 @@ void ggml_compute_forward_gte_qkv_rope(const struct ggml_compute_params * params
 void ggml_compute_forward_gte_cls_pool(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_gte_geglu(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_gte_norm_affine(const struct ggml_compute_params * params, struct ggml_tensor * dst);
+void ggml_compute_forward_gte_add_norm_affine(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_gte_linear(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_clamp(const struct ggml_compute_params * params, struct ggml_tensor * dst);
 void ggml_compute_forward_conv_transpose_1d(const struct ggml_compute_params * params, struct ggml_tensor * dst);

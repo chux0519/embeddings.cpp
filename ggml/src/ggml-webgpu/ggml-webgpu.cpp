@@ -2536,6 +2536,45 @@ static webgpu_encoded_op ggml_webgpu_gte_norm_affine(webgpu_context & ctx,
     return ggml_backend_webgpu_build(ctx, pipeline, params, entries, (uint32_t) ggml_nrows(dst));
 }
 
+static webgpu_encoded_op ggml_webgpu_gte_add_norm_affine(webgpu_context & ctx,
+                                                         ggml_tensor *    src0,
+                                                         ggml_tensor *    residual,
+                                                         ggml_tensor *    weight,
+                                                         ggml_tensor *    bias,
+                                                         ggml_tensor *    dst) {
+    ggml_webgpu_shader_lib_context shader_lib_ctx = {};
+    shader_lib_ctx.src0                           = src0;
+    shader_lib_ctx.src1                           = residual;
+    shader_lib_ctx.src2                           = weight;
+    shader_lib_ctx.dst                            = dst;
+    shader_lib_ctx.max_wg_size = ctx->global_ctx->capabilities.limits.maxComputeInvocationsPerWorkgroup;
+
+    webgpu_pipeline pipeline = ctx->shader_lib->get_gte_add_norm_affine_pipeline(shader_lib_ctx);
+
+    std::vector<uint32_t> params = {
+        (uint32_t) (ggml_webgpu_tensor_misalignment(ctx, src0) / ggml_type_size(src0->type)),
+        (uint32_t) (ggml_webgpu_tensor_misalignment(ctx, residual) / ggml_type_size(residual->type)),
+        (uint32_t) (ggml_webgpu_tensor_misalignment(ctx, weight) / ggml_type_size(weight->type)),
+        (uint32_t) (ggml_webgpu_tensor_misalignment(ctx, bias) / ggml_type_size(bias->type)),
+        (uint32_t) (ggml_webgpu_tensor_misalignment(ctx, dst) / ggml_type_size(dst->type)),
+        (uint32_t) (src0->nb[1] / ggml_type_size(src0->type)),
+        (uint32_t) (residual->nb[1] / ggml_type_size(residual->type)),
+        (uint32_t) (dst->nb[1] / ggml_type_size(dst->type)),
+        (uint32_t) dst->ne[0],
+        ggml_webgpu_u32_from_f32(ggml_get_op_params_f32(dst, 0)),
+    };
+
+    std::vector<wgpu::BindGroupEntry> entries = {
+        ggml_webgpu_make_tensor_bind_group_entry(ctx, 0, src0),
+        ggml_webgpu_make_tensor_bind_group_entry(ctx, 1, residual),
+        ggml_webgpu_make_tensor_bind_group_entry(ctx, 2, weight),
+        ggml_webgpu_make_tensor_bind_group_entry(ctx, 3, bias),
+        ggml_webgpu_make_tensor_bind_group_entry(ctx, 4, dst),
+    };
+
+    return ggml_backend_webgpu_build(ctx, pipeline, params, entries, (uint32_t) ggml_nrows(dst));
+}
+
 // Returns the encoded command, or std::nullopt if the operation is a no-op
 static std::optional<webgpu_encoded_op> ggml_webgpu_encode_node(webgpu_context ctx, ggml_tensor * node) {
     if (ggml_is_empty(node)) {
@@ -2549,6 +2588,7 @@ static std::optional<webgpu_encoded_op> ggml_webgpu_encode_node(webgpu_context c
     ggml_tensor * src0 = node->src[0];
     ggml_tensor * src1 = node->src[1];
     ggml_tensor * src2 = node->src[2];
+    ggml_tensor * src3 = node->src[3];
 
     switch (node->op) {
             // no-ops
@@ -2635,6 +2675,8 @@ static std::optional<webgpu_encoded_op> ggml_webgpu_encode_node(webgpu_context c
             return ggml_webgpu_gte_geglu(ctx, src0, node);
         case GGML_OP_GTE_NORM_AFFINE:
             return ggml_webgpu_gte_norm_affine(ctx, src0, src1, src2, node);
+        case GGML_OP_GTE_ADD_NORM_AFFINE:
+            return ggml_webgpu_gte_add_norm_affine(ctx, src0, src1, src2, src3, node);
         default:
             return std::nullopt;
     }
@@ -3722,6 +3764,12 @@ static bool ggml_backend_webgpu_device_supports_op(ggml_backend_dev_t dev, const
             supports_op = op->type == GGML_TYPE_F32 && src0->type == GGML_TYPE_F32 && src1->type == GGML_TYPE_F32 &&
                           src2->type == GGML_TYPE_F32 && ggml_is_contiguous(src0) && ggml_is_vector(src1) &&
                           ggml_is_vector(src2);
+            break;
+        case GGML_OP_GTE_ADD_NORM_AFFINE:
+            supports_op = op->type == GGML_TYPE_F32 && src0->type == GGML_TYPE_F32 && src1->type == GGML_TYPE_F32 &&
+                          src2->type == GGML_TYPE_F32 && op->src[3]->type == GGML_TYPE_F32 &&
+                          ggml_are_same_shape(src0, src1) && ggml_is_contiguous(src0) && ggml_is_contiguous(src1) &&
+                          ggml_is_vector(src2) && ggml_is_vector(op->src[3]);
             break;
         default:
             break;
