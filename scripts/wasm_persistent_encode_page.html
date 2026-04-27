@@ -33,12 +33,30 @@
       let requestQueue = [];
       let preparedModelBytes = null;
 
+      async function initModel() {
+        postStatus("model-init-start", modelPath);
+        const rc = await Module.ccall(
+          "runner_init",
+          "number",
+          ["string", "string", "number", "number", "number"],
+          [modelPath, backend, threads ? Number(threads) : 0, normalize ? 1 : 0, pooling === "cls" ? 1 : 0],
+          { async: true },
+        );
+        if (rc !== 0) {
+          const errorPtr = Module.ccall("runner_last_error", "number", [], []);
+          const error = Module.UTF8ToString(errorPtr);
+          throw new Error(error || "runner_init failed");
+        }
+        moduleReady = true;
+        postStatus("model-init-ready", modelPath);
+      }
+
       function append(line) {
         log.textContent += line + "\n";
       }
 
-      function postStatus(stage, detail) {
-        window.parent.postMessage({ type: "encode-status", stage, detail, atMs: performance.now() }, "*");
+      function postStatus(stage, detail, requestId = null) {
+        window.parent.postMessage({ type: "encode-status", stage, detail, requestId, atMs: performance.now() }, "*");
       }
 
       function postWaitingRequest(detail = "") {
@@ -219,8 +237,9 @@
         const req = requestQueue.shift();
         requestBusy = true;
         (async () => {
+          const requestId = req.requestId ?? null;
           try {
-            postStatus("encode-request-received");
+            postStatus("encode-request-received", "", requestId);
             const rc = await Module.ccall(
               "runner_encode_inline",
               "number",
@@ -235,12 +254,12 @@
             const resultPtr = Module.ccall("runner_last_json", "number", [], []);
             const resultText = Module.UTF8ToString(resultPtr);
             const result = JSON.parse(resultText);
-            postStatus("encode-result-ready");
-            window.parent.postMessage({ type: "encode-result", result, error: null }, "*");
+            postStatus("encode-result-ready", "", requestId);
+            window.parent.postMessage({ type: "encode-result", requestId, result, error: null }, "*");
           } catch (err) {
             const message = String(err && err.message ? err.message : err);
-            postStatus("encode-error", message);
-            window.parent.postMessage({ type: "encode-result", result: null, error: message }, "*");
+            postStatus("encode-error", message, requestId);
+            window.parent.postMessage({ type: "encode-result", requestId, result: null, error: message }, "*");
           } finally {
             requestBusy = false;
             tryProcessQueue();
@@ -297,21 +316,7 @@
         },
         onRuntimeInitialized: async function () {
           try {
-            postStatus("model-init-start", modelPath);
-            const rc = await Module.ccall(
-              "runner_init",
-              "number",
-              ["string", "string", "number", "number", "number"],
-              [modelPath, backend, threads ? Number(threads) : 0, normalize ? 1 : 0, pooling === "cls" ? 1 : 0],
-              { async: true },
-            );
-            if (rc !== 0) {
-              const errorPtr = Module.ccall("runner_last_error", "number", [], []);
-              const error = Module.UTF8ToString(errorPtr);
-              throw new Error(error || "runner_init failed");
-            }
-            moduleReady = true;
-            postStatus("model-init-ready", modelPath);
+            await initModel();
             postWaitingRequest("initial");
             tryProcessQueue();
           } catch (err) {

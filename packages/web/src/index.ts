@@ -81,7 +81,7 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg4";
+const RUNTIME_ASSET_VERSION = "webpkg8";
 
 const BUILD_DIRS: Record<ResolvedRuntime, string> = {
   wasm: "build-wasm-web-dyn",
@@ -160,17 +160,6 @@ function ensureBrowser(): void {
 async function detectRuntime(preferred: SnowflakeRuntime): Promise<ResolvedRuntime> {
   if (preferred !== "auto") {
     return preferred;
-  }
-
-  if (navigator.gpu) {
-    try {
-      const adapter = await navigator.gpu.requestAdapter();
-      if (adapter) {
-        return "webgpu";
-      }
-    } catch {
-      // ignore and fall back
-    }
   }
 
   if (window.crossOriginIsolated) {
@@ -310,6 +299,11 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
   private tokenizer: TokenizerLike | null = null;
   private iframe: HTMLIFrameElement | null = null;
   private queue: Promise<void> = Promise.resolve();
+  private requestId = 0;
+
+  private shouldRecycleRunnerPerRequest(): boolean {
+    return this.runtime === "webgpu" && this.options.runnerMode === "persistent";
+  }
 
   constructor(options: Required<SnowflakeEmbedderOptions>, runtime: ResolvedRuntime) {
     this.options = options;
@@ -592,6 +586,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     const iframe = await this.ensureIframe();
     return new Promise<EncodeResultPayload>((resolve, reject) => {
       const self = this;
+      const requestId = ++this.requestId;
       let sent = false;
       let lastStage = "";
       let lastDetail = "";
@@ -622,12 +617,16 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
               stage?: string;
               detail?: string;
               atMs?: number;
+              requestId?: number;
             }
           | undefined;
         if (!data) {
           return;
         }
         if (data.type === "encode-status") {
+          if (sent && data.requestId != null && data.requestId !== requestId) {
+            return;
+          }
           lastStage = data.stage || "encode-status";
           lastDetail = data.detail || "";
           self.emit(lastStage, lastDetail);
@@ -635,17 +634,20 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
             sent = true;
             window.clearInterval(ping);
             self.emit("encode-request-sent");
-            iframe.contentWindow?.postMessage({ type: "encode-request", batchLine }, "*");
+            iframe.contentWindow?.postMessage({ type: "encode-request", batchLine, requestId }, "*");
           }
           return;
         }
         if (data.type !== "encode-result") {
           return;
         }
+        if (data.requestId !== requestId) {
+          return;
+        }
         window.clearTimeout(timeout);
         window.clearInterval(ping);
         window.removeEventListener("message", onMessage);
-        if (self.options.runnerMode === "ephemeral") {
+        if (self.options.runnerMode === "ephemeral" || self.shouldRecycleRunnerPerRequest()) {
           self.resetIframe();
         }
         if (data.error || !data.result) {
