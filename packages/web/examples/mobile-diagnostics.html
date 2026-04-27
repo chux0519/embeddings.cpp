@@ -138,6 +138,7 @@
         <button id="detect-btn" class="ghost">Detect Only</button>
         <button id="run-btn">Run Smoke Test</button>
         <button id="copy-btn" class="secondary">Copy JSON</button>
+        <button id="copy-vector-btn" class="secondary">Copy Vector</button>
       </div>
     </section>
 
@@ -162,6 +163,11 @@
       <div class="label">Vector Preview</div>
       <div id="preview-meta" class="value mono" style="margin-bottom: 8px;">-</div>
       <pre id="preview" class="mono"></pre>
+    </section>
+
+    <section class="panel">
+      <div class="label">Full Vector</div>
+      <textarea id="full-vector" class="mono" rows="8" readonly></textarea>
     </section>
 
     <section class="panel">
@@ -192,6 +198,7 @@
     const previewMetaEl = document.getElementById("preview-meta");
     const timingsEl = document.getElementById("timings");
     const reportEl = document.getElementById("report");
+    const fullVectorEl = document.getElementById("full-vector");
     const statusTrail = [];
     const modelUrlEl = document.getElementById("model-url");
     const runnerModeEl = document.getElementById("runner-mode");
@@ -199,12 +206,14 @@
     const detectBtn = document.getElementById("detect-btn");
     const runBtn = document.getElementById("run-btn");
     const copyBtn = document.getElementById("copy-btn");
+    const copyVectorBtn = document.getElementById("copy-vector-btn");
 
     modelUrlEl.value = `${window.location.origin}/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`;
 
     let embedder = null;
     let embedderKey = "";
     let lastReport = null;
+    let lastVectorText = "";
     let busy = false;
 
     function setBusy(nextBusy, statusText = null) {
@@ -212,6 +221,7 @@
       detectBtn.disabled = nextBusy;
       runBtn.disabled = nextBusy;
       copyBtn.disabled = nextBusy || !lastReport;
+      copyVectorBtn.disabled = nextBusy || !lastVectorText;
       modelUrlEl.disabled = nextBusy;
       inputEl.disabled = nextBusy;
       runnerModeEl.disabled = nextBusy;
@@ -327,8 +337,10 @@
       dimensionEl.textContent = report.dimension == null ? "-" : String(report.dimension);
       previewEl.textContent = report.preview || "";
       previewMetaEl.textContent = report.preview_meta || "-";
+      fullVectorEl.value = report.full_vector || "";
       reportEl.textContent = JSON.stringify(compactReport, null, 2);
       copyBtn.disabled = busy || !lastReport;
+      copyVectorBtn.disabled = busy || !lastVectorText;
     }
 
     async function detectOnly() {
@@ -336,6 +348,8 @@
       statusEl.textContent = "Detecting";
       previewEl.textContent = "";
       previewMetaEl.textContent = "-";
+      fullVectorEl.value = "";
+      lastVectorText = "";
       const client = await getEmbedder();
       const info = client.info();
       statusEl.textContent = "Ready";
@@ -361,11 +375,14 @@
       statusEl.textContent = "Encoding";
       previewEl.textContent = "";
       previewMetaEl.textContent = "running";
+      fullVectorEl.value = "";
+      lastVectorText = "";
       const client = await getEmbedder();
       const t0 = performance.now();
       const result = await client.embed(text);
       const elapsed = performance.now() - t0;
       const vector = Array.from(result.vector);
+      lastVectorText = JSON.stringify(vector);
       statusEl.textContent = "Done";
       renderReport({
         mode: "smoke",
@@ -377,6 +394,7 @@
         dimension: result.vector.length,
         preview: vector.slice(0, 16).map((value) => value.toFixed(6)).join(", "),
         preview_meta: `sig=${vectorSignature(vector)} len=${vector.length} tokens=${result.tokenCount} input_chars=${text.length}`,
+        full_vector: JSON.stringify(vector),
         cross_origin_isolated: window.crossOriginIsolated,
         webgpu_present: Boolean(navigator.gpu),
         hardware_concurrency: navigator.hardwareConcurrency || null,
@@ -406,6 +424,20 @@
       statusEl.textContent = "Copied";
     }
 
+    async function copyVector() {
+      if (!lastVectorText) {
+        return;
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(lastVectorText);
+      } else {
+        fullVectorEl.focus();
+        fullVectorEl.select();
+        document.execCommand("copy");
+      }
+      statusEl.textContent = "Vector copied";
+    }
+
     async function runWithBusy(label, fn) {
       if (busy) {
         return;
@@ -432,6 +464,13 @@
       await runWithBusy("Copying", copyReport);
       if (!busy && lastReport) {
         statusEl.textContent = "Copied";
+      }
+    });
+
+    copyVectorBtn.addEventListener("click", async () => {
+      await runWithBusy("Copying vector", copyVector);
+      if (!busy && lastVectorText) {
+        statusEl.textContent = "Vector copied";
       }
     });
 
