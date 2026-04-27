@@ -12,6 +12,8 @@ export interface SnowflakeEmbedderOptions {
     runtime?: SnowflakeRuntime;
     runnerMode?: SnowflakeRunnerMode;
     runtimeBaseUrl?: string;
+    runtimeBuildDirs?: Partial<Record<ResolvedRuntime, string>>;
+    cpuRepack?: boolean;
     tokenizerUrl?: string;
     tokenizerScriptUrl?: string;
     cache?: boolean;

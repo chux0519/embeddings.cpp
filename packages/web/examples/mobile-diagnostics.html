@@ -127,6 +127,12 @@
     <section class="panel">
       <label class="label" for="model-url">Model URL</label>
       <input id="model-url" type="text">
+      <label class="label" for="runtime-mode" style="display:block; margin-top: 12px;">Runtime</label>
+      <select id="runtime-mode">
+        <option value="auto" selected>Auto</option>
+        <option value="wasm">WASM</option>
+        <option value="webgpu">WebGPU experimental</option>
+      </select>
       <label class="label" for="runner-mode" style="display:block; margin-top: 12px;">Runner Mode</label>
       <select id="runner-mode">
         <option value="persistent" selected>Persistent</option>
@@ -182,7 +188,16 @@
   </main>
 
   <script type="module">
-    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webgpu-tile-m4n8-20260427";
+    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webgpu-tile-m4n8-assert-20260428";
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const runtimeBuildDirs = urlParams.get("assert") === "1"
+      ? {
+          wasm: "build-wasm-web-dyn-assert",
+          webgpu: "build-wasm-webgpu-browser-dyn-assert",
+        }
+      : undefined;
+    const cpuRepack = urlParams.get("repack") === "0" ? false : undefined;
 
     const statusEl = document.getElementById("status");
     const runtimeEl = document.getElementById("runtime");
@@ -201,6 +216,7 @@
     const fullVectorEl = document.getElementById("full-vector");
     const statusTrail = [];
     const modelUrlEl = document.getElementById("model-url");
+    const runtimeModeEl = document.getElementById("runtime-mode");
     const runnerModeEl = document.getElementById("runner-mode");
     const inputEl = document.getElementById("input-text");
     const detectBtn = document.getElementById("detect-btn");
@@ -224,6 +240,7 @@
       copyVectorBtn.disabled = nextBusy || !lastVectorText;
       modelUrlEl.disabled = nextBusy;
       inputEl.disabled = nextBusy;
+      runtimeModeEl.disabled = nextBusy;
       runnerModeEl.disabled = nextBusy;
       if (statusText != null) {
         statusEl.textContent = statusText;
@@ -292,8 +309,11 @@
     async function getEmbedder() {
       const key = JSON.stringify({
         modelUrl: modelUrlEl.value.trim(),
+        runtime: runtimeModeEl.value,
         runnerMode: runnerModeEl.value,
         origin: window.location.origin,
+        assert: urlParams.get("assert") === "1",
+        repack: urlParams.get("repack") || "default",
       });
       if (embedder && embedderKey === key) {
         return embedder;
@@ -303,8 +323,11 @@
       }
       embedder = await createSnowflakeEmbedder({
         modelUrl: modelUrlEl.value.trim(),
+        runtime: runtimeModeEl.value,
         runnerMode: runnerModeEl.value,
         runtimeBaseUrl: window.location.origin,
+        runtimeBuildDirs,
+        cpuRepack,
         cache: true,
         onStatus(event) {
           pushStage(event.stage, event.detail || event.runtime || "", event.atMs || performance.now());

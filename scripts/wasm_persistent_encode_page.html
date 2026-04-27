@@ -19,6 +19,7 @@
       const assetVersion = params.get("v") || "v0.1.0";
       const backend = params.get("backend") || "";
       const threads = params.get("threads");
+      const cpuRepack = params.get("cpu_repack");
       const pooling = params.get("pooling") || "cls";
       const normalize = params.get("normalize") !== "0";
       const modelPath = params.get("model_path") || "/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf";
@@ -293,6 +294,10 @@
       window.Module = {
         noInitialRun: true,
         preRun: [function () {
+          if (cpuRepack !== null) {
+            ENV.EMBEDDINGS_CPP_CPU_REPACK = cpuRepack;
+            postStatus("env", "EMBEDDINGS_CPP_CPU_REPACK=" + cpuRepack);
+          }
           if (preparedModelBytes) {
             const slash = modelPath.lastIndexOf("/");
             if (slash > 0) {

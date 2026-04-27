@@ -204,7 +204,16 @@
   </main>
 
   <script type="module">
-    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webgpu-tile-m4n8-20260427";
+    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webgpu-tile-m4n8-assert-20260428";
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const runtimeBuildDirs = urlParams.get("assert") === "1"
+      ? {
+          wasm: "build-wasm-web-dyn-assert",
+          webgpu: "build-wasm-webgpu-browser-dyn-assert",
+        }
+      : undefined;
+    const cpuRepack = urlParams.get("repack") === "0" ? false : undefined;
 
     const modelUrlEl = document.getElementById("model-url");
     const runtimeModeEl = document.getElementById("runtime-mode");
@@ -319,6 +328,8 @@
         runtime: runtimeModeEl.value,
         runnerMode: runnerModeEl.value,
         runtimeBaseUrl: window.location.origin,
+        runtimeBuildDirs,
+        cpuRepack,
         cache: true,
         onStatus(event) {
           pushStage(event.stage, event.detail || event.runtime || "", event.atMs || performance.now());

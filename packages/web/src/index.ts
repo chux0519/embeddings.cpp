@@ -14,6 +14,8 @@ export interface SnowflakeEmbedderOptions {
   runtime?: SnowflakeRuntime;
   runnerMode?: SnowflakeRunnerMode;
   runtimeBaseUrl?: string;
+  runtimeBuildDirs?: Partial<Record<ResolvedRuntime, string>>;
+  cpuRepack?: boolean;
   tokenizerUrl?: string;
   tokenizerScriptUrl?: string;
   cache?: boolean;
@@ -59,6 +61,10 @@ interface EncodeResultPayload {
   vectors: number[][];
 }
 
+type BrowserSnowflakeEmbedderOptions = Omit<Required<SnowflakeEmbedderOptions>, "cpuRepack"> & {
+  cpuRepack?: boolean;
+};
+
 declare global {
   interface Navigator {
     gpu?: {
@@ -74,7 +80,7 @@ declare global {
 export const DEFAULT_SNOWFLAKE_MODEL_URL =
   "https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf";
 
-const RUNTIME_ASSET_VERSION = "v0.1.0";
+const RUNTIME_ASSET_VERSION = "webgpu-tile-m4n8-assert-20260428";
 const DEFAULT_SNOWFLAKE_ASSET_BASE_URL =
   `https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/browser/${RUNTIME_ASSET_VERSION}/`;
 const DEFAULT_RUNTIME_BASE_PATH = DEFAULT_SNOWFLAKE_ASSET_BASE_URL;
@@ -293,7 +299,7 @@ async function fetchMaybeCached(url: string, cacheEnabled: boolean, kind: string
 }
 
 class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
-  private readonly options: Required<SnowflakeEmbedderOptions>;
+  private readonly options: BrowserSnowflakeEmbedderOptions;
   private readonly runtime: ResolvedRuntime;
   private tokenizer: TokenizerLike | null = null;
   private iframe: HTMLIFrameElement | null = null;
@@ -315,7 +321,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     return this.options.runnerMode === "persistent" && this.effectiveRunnerMode() !== "persistent";
   }
 
-  constructor(options: Required<SnowflakeEmbedderOptions>, runtime: ResolvedRuntime) {
+  constructor(options: BrowserSnowflakeEmbedderOptions, runtime: ResolvedRuntime) {
     this.options = options;
     this.runtime = runtime;
   }
@@ -464,7 +470,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
   }
 
   private buildDir(): string {
-    return BUILD_DIRS[this.runtime];
+    return this.options.runtimeBuildDirs[this.runtime] || BUILD_DIRS[this.runtime];
   }
 
   private runtimeAssetUrl(path: string): string {
@@ -478,6 +484,9 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
       pooling: "cls",
       v: RUNTIME_ASSET_VERSION,
     });
+    if (this.options.cpuRepack != null) {
+      params.set("cpu_repack", this.options.cpuRepack ? "1" : "0");
+    }
 
     if (this.runtime === "webgpu") {
       params.set("backend", "webgpu");
@@ -694,11 +703,13 @@ export async function createSnowflakeEmbedder(
   const tokenizerScriptUrl =
     options.tokenizerScriptUrl ?? joinUrl(runtimeBaseUrl, DEFAULT_TOKENIZER_SCRIPT_PATH);
 
-  const resolved: Required<SnowflakeEmbedderOptions> = {
+  const resolved: BrowserSnowflakeEmbedderOptions = {
     modelUrl: options.modelUrl || DEFAULT_SNOWFLAKE_MODEL_URL,
     runtime: options.runtime ?? "auto",
     runnerMode: options.runnerMode ?? "ephemeral",
     runtimeBaseUrl,
+    runtimeBuildDirs: options.runtimeBuildDirs ?? {},
+    cpuRepack: options.cpuRepack,
     tokenizerUrl,
     tokenizerScriptUrl,
     cache: options.cache ?? true,
@@ -718,6 +729,8 @@ export function createSnowflakeDefaults(
     runtime: "auto",
     runnerMode: "ephemeral",
     runtimeBaseUrl: DEFAULT_RUNTIME_BASE_PATH,
+    runtimeBuildDirs: {},
+    cpuRepack: undefined,
     cache: true,
     ...overrides,
   };

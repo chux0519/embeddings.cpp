@@ -1,5 +1,5 @@
 export const DEFAULT_SNOWFLAKE_MODEL_URL = "https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf";
-const RUNTIME_ASSET_VERSION = "webgpu-tile-m4n8-20260427";
+const RUNTIME_ASSET_VERSION = "webgpu-tile-m4n8-assert-20260428";
 const DEFAULT_SNOWFLAKE_ASSET_BASE_URL = `https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/browser/${RUNTIME_ASSET_VERSION}/`;
 const DEFAULT_RUNTIME_BASE_PATH = DEFAULT_SNOWFLAKE_ASSET_BASE_URL;
 const DEFAULT_TOKENIZER_JSON_PATH = "demo/browser-wasm/assets/snowflake-tokenizer.json";
@@ -336,7 +336,7 @@ class BrowserSnowflakeEmbedder {
         return this.options.tokenizerScriptUrl;
     }
     buildDir() {
-        return BUILD_DIRS[this.runtime];
+        return this.options.runtimeBuildDirs[this.runtime] || BUILD_DIRS[this.runtime];
     }
     runtimeAssetUrl(path) {
         return withVersion(joinUrl(this.runtimeBaseUrl(), path));
@@ -348,6 +348,9 @@ class BrowserSnowflakeEmbedder {
             pooling: "cls",
             v: RUNTIME_ASSET_VERSION,
         });
+        if (this.options.cpuRepack != null) {
+            params.set("cpu_repack", this.options.cpuRepack ? "1" : "0");
+        }
         if (this.runtime === "webgpu") {
             params.set("backend", "webgpu");
         }
@@ -532,6 +535,8 @@ export async function createSnowflakeEmbedder(options) {
         runtime: options.runtime ?? "auto",
         runnerMode: options.runnerMode ?? "ephemeral",
         runtimeBaseUrl,
+        runtimeBuildDirs: options.runtimeBuildDirs ?? {},
+        cpuRepack: options.cpuRepack,
         tokenizerUrl,
         tokenizerScriptUrl,
         cache: options.cache ?? true,
@@ -547,6 +552,8 @@ export function createSnowflakeDefaults(overrides = {}) {
         runtime: "auto",
         runnerMode: "ephemeral",
         runtimeBaseUrl: DEFAULT_RUNTIME_BASE_PATH,
+        runtimeBuildDirs: {},
+        cpuRepack: undefined,
         cache: true,
         ...overrides,
     };
