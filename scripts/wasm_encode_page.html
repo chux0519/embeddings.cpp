@@ -16,6 +16,7 @@
     (async function () {
       const params = new URLSearchParams(window.location.search);
       const buildDir = params.get("build") || "build-wasm-web-dyn";
+      const assetVersion = params.get("v") || "webpkg1";
       const backend = params.get("backend") || "";
       const threads = params.get("threads");
       const pooling = params.get("pooling") || "cls";
@@ -315,7 +316,7 @@
           }
         }],
         locateFile: function (path) {
-          return "/" + buildDir + "/" + path;
+          return "/" + buildDir + "/" + path + "?v=" + encodeURIComponent(assetVersion);
         },
         print: function (text) {
           append(text);
@@ -346,7 +347,7 @@
       }
 
       const script = document.createElement("script");
-      script.src = "/" + buildDir + "/embedding_wasm_model_encode.js";
+      script.src = "/" + buildDir + "/embedding_wasm_model_encode.js?v=" + encodeURIComponent(assetVersion);
       postStatus("runtime-script-loading", script.src);
       script.onload = function () {
         postStatus("runtime-script-ready", script.src);

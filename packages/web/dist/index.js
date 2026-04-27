@@ -5,6 +5,7 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
+const RUNTIME_ASSET_VERSION = "webpkg1";
 const BUILD_DIRS = {
     wasm: "build-wasm-web-dyn",
     pthread: "build-wasm-web-pthread-dyn",
@@ -55,6 +56,11 @@ async function readResponseBytes(response, onProgress) {
 }
 function joinUrl(base, path) {
     return new URL(path, base.endsWith("/") ? base : `${base}/`).toString();
+}
+function withVersion(url, version = RUNTIME_ASSET_VERSION) {
+    const next = new URL(url, browserOrigin() || undefined);
+    next.searchParams.set("v", version);
+    return next.toString();
 }
 function ensureBrowser() {
     if (typeof window === "undefined" || typeof document === "undefined") {
@@ -322,11 +328,15 @@ class BrowserSnowflakeEmbedder {
     buildDir() {
         return BUILD_DIRS[this.runtime];
     }
+    runtimeAssetUrl(path) {
+        return withVersion(joinUrl(this.runtimeBaseUrl(), path));
+    }
     iframeUrl() {
         const params = new URLSearchParams({
             build: this.buildDir(),
             model_url: this.options.modelUrl,
             pooling: "cls",
+            v: RUNTIME_ASSET_VERSION,
         });
         if (this.runtime === "webgpu") {
             params.set("backend", "webgpu");
@@ -379,12 +389,12 @@ class BrowserSnowflakeEmbedder {
     }
     async prefetchFiles() {
         const assets = [
-            joinUrl(this.runtimeBaseUrl(), "/scripts/wasm_encode_page.html"),
-            joinUrl(this.runtimeBaseUrl(), "/scripts/wasm_persistent_encode_page.html"),
+            this.runtimeAssetUrl("/scripts/wasm_encode_page.html"),
+            this.runtimeAssetUrl("/scripts/wasm_persistent_encode_page.html"),
             this.tokenizerScriptUrl(),
             this.tokenizerJsonUrl(),
-            joinUrl(this.runtimeBaseUrl(), `/${this.buildDir()}/${this.options.runnerMode === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.js`),
-            joinUrl(this.runtimeBaseUrl(), `/${this.buildDir()}/${this.options.runnerMode === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.wasm`),
+            this.runtimeAssetUrl(`/${this.buildDir()}/${this.options.runnerMode === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.js`),
+            this.runtimeAssetUrl(`/${this.buildDir()}/${this.options.runnerMode === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.wasm`),
             this.options.modelUrl,
         ];
         for (const asset of assets) {
