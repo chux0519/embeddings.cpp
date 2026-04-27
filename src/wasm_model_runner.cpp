@@ -36,15 +36,10 @@ std::vector<int32_t> parse_csv_i32(const std::string &value) {
   return out;
 }
 
-std::vector<TokenizedInput> load_batch(const std::string &path) {
-  std::ifstream fin(path);
-  if (!fin) {
-    throw std::runtime_error("failed to open token batch file: " + path);
-  }
-
+std::vector<TokenizedInput> load_batch_stream(std::istream &input) {
   std::vector<TokenizedInput> batch;
   std::string line;
-  while (std::getline(fin, line)) {
+  while (std::getline(input, line)) {
     if (line.empty()) {
       continue;
     }
@@ -67,9 +62,22 @@ std::vector<TokenizedInput> load_batch(const std::string &path) {
     batch.push_back(std::move(enc));
   }
   if (batch.empty()) {
-    throw std::runtime_error("token batch file is empty");
+    throw std::runtime_error("token batch is empty");
   }
   return batch;
+}
+
+std::vector<TokenizedInput> load_batch_text(const std::string &text) {
+  std::istringstream input(text);
+  return load_batch_stream(input);
+}
+
+std::vector<TokenizedInput> load_batch_path(const std::string &path) {
+  std::ifstream fin(path);
+  if (!fin) {
+    throw std::runtime_error("failed to open token batch file: " + path);
+  }
+  return load_batch_stream(fin);
 }
 
 std::string vectors_to_json(const std::vector<std::vector<float>> &vectors) {
@@ -140,7 +148,27 @@ EMSCRIPTEN_KEEPALIVE int runner_encode(const char *batch_path) {
     if (!batch_path || !*batch_path) {
       throw std::runtime_error("batch_path is required");
     }
-    const auto batch = load_batch(std::string(batch_path));
+    const auto batch = load_batch_path(std::string(batch_path));
+    const auto vectors =
+        g_state.model->BatchForward(batch, g_state.normalize, g_state.pooling);
+    g_state.last_json = vectors_to_json(vectors);
+    return 0;
+  } catch (const std::exception &e) {
+    g_state.last_error = e.what();
+    return 1;
+  }
+}
+
+EMSCRIPTEN_KEEPALIVE int runner_encode_inline(const char *batch_text) {
+  try {
+    clear_last();
+    if (!g_state.model) {
+      throw std::runtime_error("model is not initialized");
+    }
+    if (!batch_text || !*batch_text) {
+      throw std::runtime_error("batch_text is required");
+    }
+    const auto batch = load_batch_text(std::string(batch_text));
     const auto vectors =
         g_state.model->BatchForward(batch, g_state.normalize, g_state.pooling);
     g_state.last_json = vectors_to_json(vectors);

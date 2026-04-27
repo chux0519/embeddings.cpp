@@ -68,8 +68,8 @@ if (EMSCRIPTEN)
         "SHELL:-sALLOW_MEMORY_GROWTH=1"
         "SHELL:-sASSERTIONS=0"
         "SHELL:-sNO_EXIT_RUNTIME=1"
-        "SHELL:-sJSPI_EXPORTS=['runner_init','runner_encode']"
-        "SHELL:-sEXPORTED_FUNCTIONS=['_runner_init','_runner_encode','_runner_last_json','_runner_last_error','_runner_reset']"
+        "SHELL:-sJSPI_EXPORTS=['runner_init','runner_encode','runner_encode_inline']"
+        "SHELL:-sEXPORTED_FUNCTIONS=['_runner_init','_runner_encode','_runner_encode_inline','_runner_last_json','_runner_last_error','_runner_reset']"
         "SHELL:-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString']"
     )
 endif ()

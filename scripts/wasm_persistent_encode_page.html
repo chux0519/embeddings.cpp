@@ -221,14 +221,11 @@
         (async () => {
           try {
             postStatus("encode-request-received");
-            const batchPath = "/input_batch.txt";
-            FS.writeFile(batchPath, new TextEncoder().encode(req.batchLine + "\n"));
-            postStatus("file-ready", batchPath);
             const rc = await Module.ccall(
-              "runner_encode",
+              "runner_encode_inline",
               "number",
               ["string"],
-              [batchPath],
+              [req.batchLine + "\n"],
               { async: true },
             );
             if (rc !== 0) {
