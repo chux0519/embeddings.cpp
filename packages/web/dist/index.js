@@ -5,7 +5,7 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg10";
+const RUNTIME_ASSET_VERSION = "webpkg12";
 const BUILD_DIRS = {
     wasm: "build-wasm-web-dyn",
     pthread: "build-wasm-web-pthread-dyn",
@@ -70,9 +70,6 @@ function ensureBrowser() {
 async function detectRuntime(preferred) {
     if (preferred !== "auto") {
         return preferred;
-    }
-    if (window.crossOriginIsolated) {
-        return "pthread";
     }
     return "wasm";
 }
@@ -455,16 +452,21 @@ class BrowserSnowflakeEmbedder {
         return new Promise((resolve, reject) => {
             const self = this;
             const requestId = ++this.requestId;
+            const effectiveRunnerMode = this.effectiveRunnerMode();
             let sent = false;
             let lastStage = "";
             let lastDetail = "";
-            const ping = window.setInterval(() => {
-                if (!sent) {
-                    iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
-                }
-            }, 250);
+            const ping = effectiveRunnerMode === "persistent"
+                ? window.setInterval(() => {
+                    if (!sent) {
+                        iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
+                    }
+                }, 250)
+                : null;
             const timeout = window.setTimeout(() => {
-                window.clearInterval(ping);
+                if (ping != null) {
+                    window.clearInterval(ping);
+                }
                 window.removeEventListener("message", onMessage);
                 self.resetIframe();
                 const suffix = lastStage ? ` after ${lastStage}${lastDetail ? `: ${lastDetail}` : ""}` : "";
@@ -485,9 +487,11 @@ class BrowserSnowflakeEmbedder {
                     lastStage = data.stage || "encode-status";
                     lastDetail = data.detail || "";
                     self.emit(lastStage, lastDetail);
-                    if (!sent && lastStage === "waiting-request") {
+                    if (!sent && effectiveRunnerMode === "persistent" && lastStage === "waiting-request") {
                         sent = true;
-                        window.clearInterval(ping);
+                        if (ping != null) {
+                            window.clearInterval(ping);
+                        }
                         self.emit("encode-request-sent");
                         iframe.contentWindow?.postMessage({ type: "encode-request", batchLine, requestId }, "*");
                     }
@@ -500,9 +504,11 @@ class BrowserSnowflakeEmbedder {
                     return;
                 }
                 window.clearTimeout(timeout);
-                window.clearInterval(ping);
+                if (ping != null) {
+                    window.clearInterval(ping);
+                }
                 window.removeEventListener("message", onMessage);
-                if (self.effectiveRunnerMode() === "ephemeral" || self.shouldRecycleRunnerPerRequest()) {
+                if (effectiveRunnerMode === "ephemeral" || self.shouldRecycleRunnerPerRequest()) {
                     self.resetIframe();
                 }
                 if (data.error || !data.result) {
@@ -513,7 +519,14 @@ class BrowserSnowflakeEmbedder {
                 resolve(data.result);
             }
             window.addEventListener("message", onMessage);
-            iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
+            if (effectiveRunnerMode === "persistent") {
+                iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
+            }
+            else {
+                sent = true;
+                self.emit("encode-request-sent");
+                iframe.contentWindow?.postMessage({ type: "encode-request", batchLine, requestId }, "*");
+            }
         });
     }
 }

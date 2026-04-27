@@ -81,7 +81,7 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg10";
+const RUNTIME_ASSET_VERSION = "webpkg12";
 
 const BUILD_DIRS: Record<ResolvedRuntime, string> = {
   wasm: "build-wasm-web-dyn",
@@ -161,11 +161,6 @@ async function detectRuntime(preferred: SnowflakeRuntime): Promise<ResolvedRunti
   if (preferred !== "auto") {
     return preferred;
   }
-
-  if (window.crossOriginIsolated) {
-    return "pthread";
-  }
-
   return "wasm";
 }
 
@@ -604,21 +599,27 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     return new Promise<EncodeResultPayload>((resolve, reject) => {
       const self = this;
       const requestId = ++this.requestId;
+      const effectiveRunnerMode = this.effectiveRunnerMode();
       let sent = false;
       let lastStage = "";
       let lastDetail = "";
-      const ping = window.setInterval(() => {
-        if (!sent) {
-          iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
+      const ping =
+        effectiveRunnerMode === "persistent"
+          ? window.setInterval(() => {
+              if (!sent) {
+                iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
+              }
+            }, 250)
+          : null;
+      const timeout = window.setTimeout(() => {
+        if (ping != null) {
+          window.clearInterval(ping);
         }
-      }, 250);
-            const timeout = window.setTimeout(() => {
-                window.clearInterval(ping);
-                window.removeEventListener("message", onMessage);
-                self.resetIframe();
-                const suffix = lastStage ? ` after ${lastStage}${lastDetail ? `: ${lastDetail}` : ""}` : "";
-                reject(new Error(`encode request timed out${suffix}`));
-            }, 120000);
+        window.removeEventListener("message", onMessage);
+        self.resetIframe();
+        const suffix = lastStage ? ` after ${lastStage}${lastDetail ? `: ${lastDetail}` : ""}` : "";
+        reject(new Error(`encode request timed out${suffix}`));
+      }, 120000);
 
       function onMessage(event: MessageEvent): void {
         if (event.source !== iframe.contentWindow) {
@@ -645,9 +646,11 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
           lastStage = data.stage || "encode-status";
           lastDetail = data.detail || "";
           self.emit(lastStage, lastDetail);
-          if (!sent && lastStage === "waiting-request") {
+          if (!sent && effectiveRunnerMode === "persistent" && lastStage === "waiting-request") {
             sent = true;
-            window.clearInterval(ping);
+            if (ping != null) {
+              window.clearInterval(ping);
+            }
             self.emit("encode-request-sent");
             iframe.contentWindow?.postMessage({ type: "encode-request", batchLine, requestId }, "*");
           }
@@ -660,9 +663,11 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
           return;
         }
         window.clearTimeout(timeout);
-        window.clearInterval(ping);
+        if (ping != null) {
+          window.clearInterval(ping);
+        }
         window.removeEventListener("message", onMessage);
-        if (self.effectiveRunnerMode() === "ephemeral" || self.shouldRecycleRunnerPerRequest()) {
+        if (effectiveRunnerMode === "ephemeral" || self.shouldRecycleRunnerPerRequest()) {
           self.resetIframe();
         }
         if (data.error || !data.result) {
@@ -674,7 +679,13 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
       }
 
       window.addEventListener("message", onMessage);
-      iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
+      if (effectiveRunnerMode === "persistent") {
+        iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
+      } else {
+        sent = true;
+        self.emit("encode-request-sent");
+        iframe.contentWindow?.postMessage({ type: "encode-request", batchLine, requestId }, "*");
+      }
     });
   }
 }
