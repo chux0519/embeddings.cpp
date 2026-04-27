@@ -81,7 +81,7 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg15";
+const RUNTIME_ASSET_VERSION = "webpkg16";
 
 const BUILD_DIRS: Record<ResolvedRuntime, string> = {
   wasm: "build-wasm-web-dyn",
@@ -691,16 +691,7 @@ export async function createSnowflakeEmbedder(
     onStatus: options.onStatus ?? (() => {}),
   };
 
-  const requestedRuntime = await detectRuntime(resolved.runtime);
-  let runtime = requestedRuntime;
-  if (runtime !== "wasm") {
-    runtime = "wasm";
-    resolved.onStatus({
-      stage: "runtime-fallback",
-      runtime,
-      detail: `${requestedRuntime} -> wasm`,
-    });
-  }
+  const runtime = await detectRuntime(resolved.runtime);
   resolved.onStatus({ stage: "runtime-selected", runtime, detail: runtime });
   return new BrowserSnowflakeEmbedder(resolved, runtime);
 }
