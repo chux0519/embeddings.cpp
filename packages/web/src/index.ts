@@ -81,7 +81,7 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg20";
+const RUNTIME_ASSET_VERSION = "webpkg21";
 
 const BUILD_DIRS: Record<ResolvedRuntime, string> = {
   wasm: "build-wasm-web-dyn",
@@ -300,7 +300,7 @@ class BrowserSnowflakeEmbedder implements SnowflakeEmbedder {
     if (this.options.runnerMode !== "persistent") {
       return this.options.runnerMode;
     }
-    if (this.runtime === "wasm") {
+    if (this.runtime === "wasm" || this.runtime === "webgpu") {
       return "persistent";
     }
     return "ephemeral";

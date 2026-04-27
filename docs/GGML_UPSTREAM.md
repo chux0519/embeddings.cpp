@@ -9,10 +9,10 @@
 - Subdirectory: `ggml`
 - Local path: `ggml/`
 
-The current vendored tree was refreshed in local commit
-`35efd19096c2f6b349abcc32561fc6c13e0fd0ae`, but that commit did not record the
-exact upstream llama.cpp tag or commit. Until the next import records an exact
-ref, treat the current `ggml/` tree as a local fork with unknown upstream base.
+The current vendored tree is recorded in `.vendor/ggml-upstream.json` as
+llama.cpp `b8833` at commit
+`45cac7ca703fb9085eae62b9121fca01d20177f6`, imported in
+`f5bb1543e899bacc11b90330632adfdf6cffd811` on 2026-04-25.
 
 The latest upstream release checked for this tracking pass was llama.cpp
 `b8833` (`45cac7c`) on 2026-04-24.
@@ -57,6 +57,8 @@ performance:
 - CPU fast-path behavior used by `src/gte.cpp`.
 - Any embedding-specific ggml op registration or serialization changes.
 - Snowflake correctness tests and benchmark scripts.
+- Browser WebGPU fallback compatibility for GTE/Snowflake graphs until the
+  missing WebGPU kernels are implemented upstream or in our overlay.
 
 The current overlay inventory lives in `docs/GGML_OVERLAY_PATCHES.md`.
 

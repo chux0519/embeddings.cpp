@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 
 const baseUrl = process.env.BASE_URL || "https://emb.potafree.net";
 const packageUrl =
-  process.env.PACKAGE_URL || `${baseUrl}/packages/web/dist/index.js?v=webpkg20`;
+  process.env.PACKAGE_URL || `${baseUrl}/packages/web/dist/index.js?v=webpkg21`;
 const pageUrl =
   process.env.PAGE_URL || `${baseUrl}/packages/web/examples/basic-browser.html`;
 const modelUrl =
@@ -11,6 +11,7 @@ const modelUrl =
 const executablePath = process.env.EXECUTABLE_PATH || undefined;
 const runnerMode = process.env.RUNNER_MODE || "ephemeral";
 const timeoutMs = Number.parseInt(process.env.TIMEOUT_MS || "180000", 10);
+const minCosine = Number.parseFloat(process.env.MIN_COSINE || "0.995");
 const runtimes = (process.env.RUNTIMES || "wasm,webgpu,pthread")
   .split(",")
   .map((value) => value.trim())
@@ -28,6 +29,21 @@ function signature(values) {
     acc = Math.imul(acc, 16777619) >>> 0;
   }
   return acc.toString(16).padStart(8, "0");
+}
+
+function cosine(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) {
+    return Number.NaN;
+  }
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  return dot / Math.sqrt(na * nb);
 }
 
 async function runRuntime(page, runtime) {
@@ -82,6 +98,7 @@ async function runRuntime(page, runtime) {
             dimension: vector.length,
             sig: sig(vector),
             preview: vector.slice(0, 8),
+            vector,
           });
         }
         await embedder.dispose();
@@ -163,17 +180,46 @@ async function runRuntimeWithOuterTimeout(runtime) {
 }
 
 const results = [];
+function printableResult(result) {
+  return {
+    ...result,
+    outputs: result.outputs?.map(({ vector, ...output }) => output),
+  };
+}
+
 for (const runtime of runtimes) {
   const result = await runRuntimeWithOuterTimeout(runtime);
   results.push(result);
-  console.log(JSON.stringify(result, null, 2));
+  console.log(JSON.stringify(printableResult(result), null, 2));
+}
+
+const baseline = results.find((result) => result.ok && result.outputs?.length === texts.length);
+if (baseline) {
+  for (const result of results) {
+    if (!result.ok || result === baseline || !result.outputs) {
+      continue;
+    }
+    result.baselineRuntime = baseline.runtime;
+    result.baselineCosine = result.outputs.map((output, index) => ({
+      text: output.text,
+      cosine: cosine(output.vector, baseline.outputs[index].vector),
+    }));
+    console.log(JSON.stringify({
+      runtime: result.runtime,
+      baselineRuntime: result.baselineRuntime,
+      minCosine: Math.min(...result.baselineCosine.map((item) => item.cosine)),
+      baselineCosine: result.baselineCosine,
+    }, null, 2));
+  }
 }
 
 const failed = results.filter(
   (result) =>
     !result.ok ||
     !result.outputs?.every((output) => output.dimension === 768) ||
-    !result.sigChanged,
+    !result.sigChanged ||
+    (result.baselineCosine &&
+      result.baselineCosine.some((item) => !Number.isFinite(item.cosine) || item.cosine < minCosine)),
 );
 if (failed.length > 0) {
   process.exitCode = 1;

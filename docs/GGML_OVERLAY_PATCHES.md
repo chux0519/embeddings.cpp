@@ -43,6 +43,23 @@ Porting rule:
 - update op count tables and RPC protocol guard together;
 - rerun correctness, batch-vs-single alignment, and Snowflake performance.
 
+WebGPU note:
+
+- these ops currently have CPU implementations only;
+- browser WebGPU runs through ggml scheduler with CPU fallback for unsupported
+  GTE ops;
+- new WebGPU kernels should be added from easiest to hardest, with each kernel
+  guarded by correctness tests against the wasm/native baseline before it is
+  considered part of the overlay.
+
+Planned WebGPU kernel order:
+
+1. `GGML_OP_GTE_CLS_POOL`: small surface area, easiest correctness target.
+2. `GGML_OP_GTE_GEGLU`: removes a repeated MLP fallback split.
+3. `GGML_OP_GTE_QKV_ROPE`: higher payoff, more layout-sensitive.
+4. `GGML_OP_GTE_LINEAR`: keep only if it beats upstream `MUL_MAT` paths for
+   Snowflake shapes.
+
 ### Llamafile Fallback Guard
 
 File:

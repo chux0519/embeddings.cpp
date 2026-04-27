@@ -87,3 +87,28 @@ uv run scripts/server_compare.py \
 ```
 
 For benchmark comparison, use `scripts/benchmark.py` after functional tests pass.
+
+## Browser Runtime Cases
+
+Browser correctness should cover:
+
+- `wasm` persistent runner
+- `webgpu` persistent runner
+- two or more different inputs in the same persistent runner instance
+- signature changes between different inputs
+- cosine against the first successful baseline runtime
+
+Current regression command on a WebGPU-capable macOS host:
+
+```bash
+EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+BASE_URL=http://127.0.0.1:18081 \
+PAGE_URL=http://127.0.0.1:18081/packages/web/examples/basic-browser.html \
+MODEL_URL=http://127.0.0.1:18081/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf \
+RUNTIMES=wasm,webgpu \
+RUNNER_MODE=persistent \
+MIN_COSINE=0.995 \
+node scripts/browser_runtime_regression.mjs
+```
+
+`pthread` browser runtime remains queued behind WebGPU.

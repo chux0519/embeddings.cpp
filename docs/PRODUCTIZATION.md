@@ -93,6 +93,22 @@ model = load(
 )
 ```
 
+## Python Package Publishing
+
+The Python package is buildable through `setup.py`, but a PyPI release workflow
+is not yet in place. Track this before using the package as an external
+production dependency.
+
+Planned release path:
+
+1. Add package metadata suitable for PyPI release review.
+2. Build wheels for the supported CPU platforms.
+3. Add a GitHub Actions workflow that builds, smoke tests, and publishes on
+   `v*` tags or manual dispatch.
+4. Store PyPI publishing credentials through trusted publishing or a scoped
+   secret.
+5. Document install and upgrade commands for the server deployment.
+
 ## HTTP Server
 
 The server is intended as the TEI replacement surface:
@@ -170,3 +186,14 @@ uv run scripts/benchmark.py \
 GitHub-hosted runners are acceptable for build and smoke correctness. They are
 not stable enough for final performance claims. Use a fixed local host or a
 self-hosted runner for release benchmark numbers.
+
+## Backlog
+
+Tracked follow-up items:
+
+- publish `embeddings-cpp` Python wheels to PyPI;
+- publish and version the server container image for TEI replacement;
+- document the Kubernetes migration from TEI to `embeddings.cpp`;
+- keep `docs/GGML_OVERLAY_PATCHES.md` current before each ggml upstream refresh;
+- implement missing Snowflake WebGPU kernels in the documented order;
+- fix browser `pthread` after WebGPU persistent is closed out.
