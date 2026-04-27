@@ -5,7 +5,7 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg12";
+const RUNTIME_ASSET_VERSION = "webpkg15";
 const BUILD_DIRS = {
     wasm: "build-wasm-web-dyn",
     pthread: "build-wasm-web-pthread-dyn",
@@ -200,6 +200,9 @@ class BrowserSnowflakeEmbedder {
         }
         return "ephemeral";
     }
+    usesRunnerApiTransport() {
+        return this.runtime !== "wasm" || this.effectiveRunnerMode() === "persistent";
+    }
     shouldRecycleRunnerPerRequest() {
         return this.options.runnerMode === "persistent" && this.effectiveRunnerMode() !== "persistent";
     }
@@ -350,7 +353,7 @@ class BrowserSnowflakeEmbedder {
         if (this.runtime === "pthread") {
             params.set("threads", String(this.options.threads));
         }
-        const runnerPage = this.effectiveRunnerMode() === "persistent"
+        const runnerPage = this.usesRunnerApiTransport()
             ? "/scripts/wasm_persistent_encode_page.html"
             : "/scripts/wasm_encode_page.html";
         return `${joinUrl(this.runtimeBaseUrl(), runnerPage)}?${params.toString()}`;
@@ -399,8 +402,8 @@ class BrowserSnowflakeEmbedder {
             this.runtimeAssetUrl("/scripts/wasm_persistent_encode_page.html"),
             this.tokenizerScriptUrl(),
             this.tokenizerJsonUrl(),
-            this.runtimeAssetUrl(`/${this.buildDir()}/${this.effectiveRunnerMode() === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.js`),
-            this.runtimeAssetUrl(`/${this.buildDir()}/${this.effectiveRunnerMode() === "persistent" ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.wasm`),
+            this.runtimeAssetUrl(`/${this.buildDir()}/${this.usesRunnerApiTransport() ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.js`),
+            this.runtimeAssetUrl(`/${this.buildDir()}/${this.usesRunnerApiTransport() ? "embedding_wasm_model_runner" : "embedding_wasm_model_encode"}.wasm`),
             this.options.modelUrl,
         ];
         for (const asset of assets) {
@@ -453,20 +456,10 @@ class BrowserSnowflakeEmbedder {
             const self = this;
             const requestId = ++this.requestId;
             const effectiveRunnerMode = this.effectiveRunnerMode();
-            let sent = false;
+            const usesRunnerApiTransport = this.usesRunnerApiTransport();
             let lastStage = "";
             let lastDetail = "";
-            const ping = effectiveRunnerMode === "persistent"
-                ? window.setInterval(() => {
-                    if (!sent) {
-                        iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
-                    }
-                }, 250)
-                : null;
             const timeout = window.setTimeout(() => {
-                if (ping != null) {
-                    window.clearInterval(ping);
-                }
                 window.removeEventListener("message", onMessage);
                 self.resetIframe();
                 const suffix = lastStage ? ` after ${lastStage}${lastDetail ? `: ${lastDetail}` : ""}` : "";
@@ -481,20 +474,12 @@ class BrowserSnowflakeEmbedder {
                     return;
                 }
                 if (data.type === "encode-status") {
-                    if (sent && data.requestId != null && data.requestId !== requestId) {
+                    if (data.requestId != null && data.requestId !== requestId) {
                         return;
                     }
                     lastStage = data.stage || "encode-status";
                     lastDetail = data.detail || "";
                     self.emit(lastStage, lastDetail);
-                    if (!sent && effectiveRunnerMode === "persistent" && lastStage === "waiting-request") {
-                        sent = true;
-                        if (ping != null) {
-                            window.clearInterval(ping);
-                        }
-                        self.emit("encode-request-sent");
-                        iframe.contentWindow?.postMessage({ type: "encode-request", batchLine, requestId }, "*");
-                    }
                     return;
                 }
                 if (data.type !== "encode-result") {
@@ -504,9 +489,6 @@ class BrowserSnowflakeEmbedder {
                     return;
                 }
                 window.clearTimeout(timeout);
-                if (ping != null) {
-                    window.clearInterval(ping);
-                }
                 window.removeEventListener("message", onMessage);
                 if (effectiveRunnerMode === "ephemeral" || self.shouldRecycleRunnerPerRequest()) {
                     self.resetIframe();
@@ -519,14 +501,8 @@ class BrowserSnowflakeEmbedder {
                 resolve(data.result);
             }
             window.addEventListener("message", onMessage);
-            if (effectiveRunnerMode === "persistent") {
-                iframe.contentWindow?.postMessage({ type: "runner-ping" }, "*");
-            }
-            else {
-                sent = true;
-                self.emit("encode-request-sent");
-                iframe.contentWindow?.postMessage({ type: "encode-request", batchLine, requestId }, "*");
-            }
+            self.emit("encode-request-sent");
+            iframe.contentWindow?.postMessage({ type: "encode-request", batchLine, requestId }, "*");
         });
     }
 }
@@ -547,7 +523,16 @@ export async function createSnowflakeEmbedder(options) {
         cache: options.cache ?? true,
         onStatus: options.onStatus ?? (() => { }),
     };
-    const runtime = await detectRuntime(resolved.runtime);
+    const requestedRuntime = await detectRuntime(resolved.runtime);
+    let runtime = requestedRuntime;
+    if (runtime !== "wasm") {
+        runtime = "wasm";
+        resolved.onStatus({
+            stage: "runtime-fallback",
+            runtime,
+            detail: `${requestedRuntime} -> wasm`,
+        });
+    }
     resolved.onStatus({ stage: "runtime-selected", runtime, detail: runtime });
     return new BrowserSnowflakeEmbedder(resolved, runtime);
 }
