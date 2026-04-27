@@ -223,11 +223,12 @@
             const batchPath = "/input_batch.txt";
             FS.writeFile(batchPath, new TextEncoder().encode(req.batchLine + "\n"));
             postStatus("file-ready", batchPath);
-            const rc = Module.ccall(
+            const rc = await Module.ccall(
               "runner_encode",
               "number",
               ["string"],
               [batchPath],
+              { async: true },
             );
             if (rc !== 0) {
               const error = Module.UTF8ToString(Module.ccall("runner_last_error", "number", [], []));
@@ -299,11 +300,12 @@
         onRuntimeInitialized: async function () {
           try {
             postStatus("model-init-start", modelPath);
-            const rc = Module.ccall(
+            const rc = await Module.ccall(
               "runner_init",
               "number",
               ["string", "string", "number", "number", "number"],
               [modelPath, backend, threads ? Number(threads) : 0, normalize ? 1 : 0, pooling === "cls" ? 1 : 0],
+              { async: true },
             );
             if (rc !== 0) {
               const errorPtr = Module.ccall("runner_last_error", "number", [], []);
@@ -334,7 +336,7 @@
       }
 
       const script = document.createElement("script");
-      script.src = "/" + buildDir + "/embedding_wasm_model_runner.js?v=runnerfix1";
+      script.src = "/" + buildDir + "/embedding_wasm_model_runner.js?v=runnerfix2";
       postStatus("runtime-script-loading", script.src);
       script.onload = function () {
         postStatus("runtime-script-ready", script.src);
