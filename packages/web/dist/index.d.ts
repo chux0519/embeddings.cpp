@@ -28,6 +28,7 @@ export interface SnowflakeEmbedderInfo {
     modelUrl: string;
     runtime: ResolvedRuntime | "pending";
     runnerMode: SnowflakeRunnerMode;
+    effectiveRunnerMode?: SnowflakeRunnerMode;
     dim: 768;
     normalized: true;
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>@embeddings-cpp/web mobile diagnostics</title>
+  <title>@embeddings-cpp/web browser diagnostics</title>
   <style>
     :root {
       color-scheme: light;
@@ -117,10 +117,10 @@
 <body>
   <main>
     <section>
-      <p class="label">Mobile Diagnostics</p>
+      <p class="label">Browser Diagnostics</p>
       <h1>@embeddings-cpp/web</h1>
       <p style="margin-top: 10px;">
-        Use this page on iPhone, iPad, or Android to verify browser capability and run one Snowflake embedding request.
+        Use this page on desktop or mobile browsers to verify runtime capability and run one Snowflake embedding request.
       </p>
     </section>
 
@@ -175,7 +175,7 @@
   </main>
 
   <script type="module">
-    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=persistent2";
+    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webgpupersist1";
 
     const statusEl = document.getElementById("status");
     const runtimeEl = document.getElementById("runtime");
