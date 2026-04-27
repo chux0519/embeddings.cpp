@@ -26,11 +26,21 @@
 // Matrix multiplication parameters
 
 // Register tiling parameters
-#define WEBGPU_MUL_MAT_TILE_M    8
-#define WEBGPU_MUL_MAT_TILE_N    8
+#ifndef WEBGPU_MUL_MAT_TILE_M
+#define WEBGPU_MUL_MAT_TILE_M 4
+#endif
+#ifndef WEBGPU_MUL_MAT_TILE_N
+#define WEBGPU_MUL_MAT_TILE_N 8
+#endif
+#ifndef WEBGPU_MUL_MAT_WG_SIZE_M
 #define WEBGPU_MUL_MAT_WG_SIZE_M 8
+#endif
+#ifndef WEBGPU_MUL_MAT_WG_SIZE_N
 #define WEBGPU_MUL_MAT_WG_SIZE_N 8
-#define WEBGPU_MUL_MAT_TILE_K    32
+#endif
+#ifndef WEBGPU_MUL_MAT_TILE_K
+#define WEBGPU_MUL_MAT_TILE_K 32
+#endif
 
 // Subgroup matrix parameters
 // The number of subgroups in the M dimension
