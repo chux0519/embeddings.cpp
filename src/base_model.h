@@ -40,6 +40,7 @@ class BackendContext {
 
   // memory buffers to evaluate the model
   ggml_backend_t backend = NULL;
+  ggml_backend_t fallback_backend = NULL;
   ggml_backend_t blas_backend = NULL;
   ggml_backend_buffer_t weights_buffer = NULL;
 

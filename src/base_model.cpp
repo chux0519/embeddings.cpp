@@ -111,6 +111,10 @@ BaseModel::~BaseModel() {
     ggml_backend_free(ctx.blas_backend);
     ctx.blas_backend = NULL;
   }
+  if (ctx.fallback_backend) {
+    ggml_backend_free(ctx.fallback_backend);
+    ctx.fallback_backend = NULL;
+  }
   if (ctx.ctx_data) {
     ggml_free(ctx.ctx_data);
     ctx.ctx_data = NULL;
@@ -321,6 +325,15 @@ void BaseModel::InitializeBackend() {
     ctx.backend = ggml_backend_cpu_init();
   }
 
+  if (ctx.backend && !ggml_backend_is_cpu(ctx.backend)) {
+    ctx.fallback_backend = ggml_backend_cpu_init();
+    if (ctx.fallback_backend) {
+      fprintf(stderr, "%s: using CPU fallback backend\n", __func__);
+    } else {
+      fprintf(stderr, "%s: ggml_backend_cpu_init() fallback failed\n", __func__);
+    }
+  }
+
 #ifdef GGML_USE_BLAS
   if (ctx.backend && ggml_backend_is_cpu(ctx.backend) &&
       should_use_blas(model_ftype)) {
@@ -345,7 +358,7 @@ struct ggml_cgraph *BaseModel::CommonBatchForwardSetup(
   const auto t1 = Clock::now();
 
   // alloc graph
-  if (!ctx.blas_backend) {
+  if (!ctx.blas_backend && !ctx.fallback_backend) {
     ctx.compute_allocr =
         ggml_gallocr_new(ggml_backend_get_default_buffer_type(ctx.backend));
     ggml_gallocr_alloc_graph(ctx.compute_allocr, graph);
@@ -363,6 +376,9 @@ struct ggml_cgraph *BaseModel::CommonBatchForwardSetup(
   if (ggml_backend_is_cpu(ctx.backend)) {
     ggml_backend_cpu_set_n_threads(ctx.backend, n_threads);
   }
+  if (ctx.fallback_backend) {
+    ggml_backend_cpu_set_n_threads(ctx.fallback_backend, n_threads);
+  }
 #ifdef GGML_USE_BLAS
   if (ctx.blas_backend) {
     ggml_backend_blas_set_n_threads(ctx.blas_backend,
@@ -379,6 +395,12 @@ struct ggml_cgraph *BaseModel::CommonBatchForwardSetup(
     };
     ctx.compute_sched =
         ggml_backend_sched_new(backends, bufts, 2, ggml_graph_size(graph),
+                               false, true);
+    compute_status = ggml_backend_sched_graph_compute(ctx.compute_sched, graph);
+  } else if (ctx.fallback_backend) {
+    ggml_backend_t backends[] = {ctx.backend, ctx.fallback_backend};
+    ctx.compute_sched =
+        ggml_backend_sched_new(backends, nullptr, 2, ggml_graph_size(graph),
                                false, true);
     compute_status = ggml_backend_sched_graph_compute(ctx.compute_sched, graph);
   } else {

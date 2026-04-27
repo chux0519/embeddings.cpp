@@ -99,6 +99,34 @@ static bool use_gte_fused_linear() {
   return std::atoi(env) != 0;
 }
 
+static bool use_inplace_graph_ops() {
+  const char *backend = std::getenv("EMBEDDINGS_CPP_BACKEND");
+  return !backend || std::strcmp(backend, "webgpu") != 0;
+}
+
+static ggml_tensor *gte_add(struct ggml_context *ctx, ggml_tensor *a,
+                            ggml_tensor *b) {
+  return use_inplace_graph_ops() ? ggml_add_inplace(ctx, a, b)
+                                 : ggml_add(ctx, a, b);
+}
+
+static ggml_tensor *gte_mul(struct ggml_context *ctx, ggml_tensor *a,
+                            ggml_tensor *b) {
+  return use_inplace_graph_ops() ? ggml_mul_inplace(ctx, a, b)
+                                 : ggml_mul(ctx, a, b);
+}
+
+static ggml_tensor *gte_scale(struct ggml_context *ctx, ggml_tensor *a,
+                              float scale) {
+  return use_inplace_graph_ops() ? ggml_scale_inplace(ctx, a, scale)
+                                 : ggml_scale(ctx, a, scale);
+}
+
+static ggml_tensor *gte_gelu(struct ggml_context *ctx, ggml_tensor *a) {
+  return use_inplace_graph_ops() ? ggml_gelu_inplace(ctx, a)
+                                 : ggml_gelu(ctx, a);
+}
+
 static bool use_gte_fused_linear_for_shape(const ggml_tensor *weight) {
   if (!use_gte_fused_linear()) {
     return false;
@@ -207,9 +235,10 @@ static ggml_tensor *ggml_norm_affine_inplace(struct ggml_context *ctx,
   if (use_gte_fused_norm()) {
     return ggml_gte_norm_affine(ctx, x, weight, bias, eps);
   }
-  x = ggml_norm_inplace(ctx, x, eps);
-  x = ggml_mul_inplace(ctx, x, weight);
-  x = ggml_add_inplace(ctx, x, bias);
+  x = use_inplace_graph_ops() ? ggml_norm_inplace(ctx, x, eps)
+                              : ggml_norm(ctx, x, eps);
+  x = gte_mul(ctx, x, weight);
+  x = gte_add(ctx, x, bias);
   return x;
 }
 
@@ -453,7 +482,7 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
     auto *pooled = zero_pooled;
     if (normalize) {
       pooled = ggml_rms_norm(ctx0, pooled, gte_hparams->layer_norm_eps);
-      pooled = ggml_scale_inplace(ctx0, pooled, 1.0f / sqrtf((float)D));
+      pooled = gte_scale(ctx0, pooled, 1.0f / sqrtf((float)D));
     }
     ggml_build_forward_expand(gf, pooled);
     return gf;
@@ -536,9 +565,9 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
   }
 
   auto *emb = ggml_get_rows(ctx0, embeddings.word_embeddings, input_ids);
-  emb = ggml_add_inplace(
-      ctx0, emb,
-      ggml_get_rows(ctx0, embeddings.token_type_embeddings, token_type_ids));
+  emb = gte_add(ctx0, emb,
+                ggml_get_rows(ctx0, embeddings.token_type_embeddings,
+                              token_type_ids));
   emb = ggml_cont(ctx0, ggml_reshape_2d(ctx0, emb, D, N));
   emb = ggml_norm_affine_inplace(ctx0, emb, embeddings.LayerNorm_w,
                                  embeddings.LayerNorm_b,
@@ -643,7 +672,7 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
                                 v_scores->nb[3],
                                 token_offset * v_scores->nb[0]);
         auto *score = ggml_mul_mat(ctx0, kb, qb);
-        score = ggml_scale_inplace(ctx0, score, 1.0f / sqrtf((float)d_head));
+        score = gte_scale(ctx0, score, 1.0f / sqrtf((float)d_head));
         score = ggml_soft_max(ctx0, score);
 
         attn = ggml_mul_mat(ctx0, vb, score);
@@ -658,7 +687,7 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
     }
 
     auto *proj = gte_linear(ctx0, layer.o_proj_w, attn, layer.o_proj_b);
-    auto *res = ggml_add_inplace(ctx0, proj, inpL);
+    auto *res = gte_add(ctx0, proj, inpL);
     res = ggml_norm_affine_inplace(ctx0, res, layer.attn_ln_w,
                                    layer.attn_ln_b,
                                    gte_hparams->layer_norm_eps);
@@ -677,13 +706,13 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
           ctx0, up_gate, hidden_features, res->ne[1], up_gate->nb[1],
           hidden_features * up_gate->nb[0]);
       gate = ggml_cont(ctx0, gate);
-      gate = ggml_gelu_inplace(ctx0, gate);
+      gate = gte_gelu(ctx0, gate);
       gated_states = ggml_mul(ctx0, gate, up_state);
     }
     struct ggml_tensor *ffn =
         gte_linear(ctx0, layer.down_proj_w, gated_states, layer.down_proj_b);
 
-    inpL = ggml_add_inplace(ctx0, ffn, res);
+    inpL = gte_add(ctx0, ffn, res);
     inpL = ggml_norm_affine_inplace(ctx0, inpL, layer.mlp_ln_w, layer.mlp_ln_b,
                                     gte_hparams->layer_norm_eps);
   }
@@ -715,7 +744,7 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
 
   if (normalize) {
     pooled = ggml_rms_norm(ctx0, pooled, gte_hparams->layer_norm_eps);
-    pooled = ggml_scale_inplace(ctx0, pooled, 1.0f / sqrtf((float)D));
+    pooled = gte_scale(ctx0, pooled, 1.0f / sqrtf((float)D));
   }
 
   ggml_build_forward_expand(gf, pooled);

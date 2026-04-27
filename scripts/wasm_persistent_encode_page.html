@@ -310,6 +310,7 @@
         },
         printErr: function (text) {
           append("[stderr] " + text);
+          postStatus("stderr", text);
         },
         setStatus: function (text) {
           status.textContent = text;

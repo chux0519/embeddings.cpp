@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 
 const baseUrl = process.env.BASE_URL || "https://emb.potafree.net";
 const packageUrl =
-  process.env.PACKAGE_URL || `${baseUrl}/packages/web/dist/index.js?v=webpkg16`;
+  process.env.PACKAGE_URL || `${baseUrl}/packages/web/dist/index.js?v=webpkg20`;
 const pageUrl =
   process.env.PAGE_URL || `${baseUrl}/packages/web/examples/basic-browser.html`;
 const modelUrl =
@@ -118,9 +118,28 @@ async function runRuntimeWithOuterTimeout(runtime) {
   try {
     const context = await browser.newContext({ serviceWorkers: "block" });
     const page = await context.newPage();
+    const consoleMessages = [];
+    page.on("console", (message) => {
+      consoleMessages.push({
+        type: message.type(),
+        text: message.text(),
+      });
+      if (consoleMessages.length > 80) {
+        consoleMessages.shift();
+      }
+    });
+    page.on("pageerror", (error) => {
+      consoleMessages.push({
+        type: "pageerror",
+        text: String(error && error.stack ? error.stack : error),
+      });
+      if (consoleMessages.length > 80) {
+        consoleMessages.shift();
+      }
+    });
     await page.goto(pageUrl, { waitUntil: "load", timeout: timeoutMs });
 
-    return await Promise.race([
+    const result = await Promise.race([
       runRuntime(page, runtime),
       new Promise((resolve) => {
         setTimeout(() => {
@@ -134,6 +153,10 @@ async function runRuntimeWithOuterTimeout(runtime) {
         }, timeoutMs);
       }),
     ]);
+    return {
+      ...result,
+      consoleMessages: consoleMessages.slice(-30),
+    };
   } finally {
     await browser.close().catch(() => {});
   }
