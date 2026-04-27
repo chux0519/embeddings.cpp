@@ -5,7 +5,7 @@ const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg16";
+const RUNTIME_ASSET_VERSION = "webpkg19";
 const BUILD_DIRS = {
     wasm: "build-wasm-web-dyn",
     pthread: "build-wasm-web-pthread-dyn",
@@ -456,10 +456,24 @@ class BrowserSnowflakeEmbedder {
             const self = this;
             const requestId = ++this.requestId;
             const effectiveRunnerMode = this.effectiveRunnerMode();
-            const usesRunnerApiTransport = this.usesRunnerApiTransport();
             let lastStage = "";
             let lastDetail = "";
+            let requestReceived = false;
+            let sendLogged = false;
+            const sendRequest = () => {
+                if (!sendLogged) {
+                    sendLogged = true;
+                    self.emit("encode-request-sent");
+                }
+                iframe.contentWindow?.postMessage({ type: "encode-request", batchLine, requestId }, "*");
+            };
+            const resend = window.setInterval(() => {
+                if (!requestReceived) {
+                    sendRequest();
+                }
+            }, 500);
             const timeout = window.setTimeout(() => {
+                window.clearInterval(resend);
                 window.removeEventListener("message", onMessage);
                 self.resetIframe();
                 const suffix = lastStage ? ` after ${lastStage}${lastDetail ? `: ${lastDetail}` : ""}` : "";
@@ -480,15 +494,20 @@ class BrowserSnowflakeEmbedder {
                     lastStage = data.stage || "encode-status";
                     lastDetail = data.detail || "";
                     self.emit(lastStage, lastDetail);
+                    if (lastStage === "encode-request-received") {
+                        requestReceived = true;
+                        window.clearInterval(resend);
+                    }
                     return;
                 }
                 if (data.type !== "encode-result") {
                     return;
                 }
-                if (data.requestId !== requestId) {
+                if (data.requestId !== requestId && !(data.requestId == null && data.error)) {
                     return;
                 }
                 window.clearTimeout(timeout);
+                window.clearInterval(resend);
                 window.removeEventListener("message", onMessage);
                 if (effectiveRunnerMode === "ephemeral" || self.shouldRecycleRunnerPerRequest()) {
                     self.resetIframe();
@@ -501,8 +520,7 @@ class BrowserSnowflakeEmbedder {
                 resolve(data.result);
             }
             window.addEventListener("message", onMessage);
-            self.emit("encode-request-sent");
-            iframe.contentWindow?.postMessage({ type: "encode-request", batchLine, requestId }, "*");
+            sendRequest();
         });
     }
 }

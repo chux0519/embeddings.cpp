@@ -31,6 +31,7 @@
       let moduleReady = false;
       let requestBusy = false;
       let requestQueue = [];
+      const seenRequestIds = new Set();
       let preparedModelBytes = null;
 
       async function initModel() {
@@ -278,6 +279,12 @@
           return;
         }
         if (data.type === "encode-request") {
+          if (data.requestId != null) {
+            if (seenRequestIds.has(data.requestId)) {
+              return;
+            }
+            seenRequestIds.add(data.requestId);
+          }
           requestQueue.push(data);
           tryProcessQueue();
         }
