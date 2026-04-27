@@ -1,0 +1,180 @@
+name: Upload Web Assets to Hugging Face
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_id:
+        description: "Registered model id or alias"
+        required: true
+        default: "Snowflake/snowflake-arctic-embed-m-v2.0"
+        type: string
+      web_asset_version:
+        description: "Browser asset version directory"
+        required: true
+        default: "webpkg22"
+        type: string
+      hf_repo_id:
+        description: "Override target Hugging Face model repo. Leave empty to use registry."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upload-web-assets-to-hf-${{ github.ref }}-${{ inputs.model_id }}-${{ inputs.web_asset_version }}
+  cancel-in-progress: true
+
+env:
+  HF_HUB_ENABLE_HF_TRANSFER: 1
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build ccache
+
+      - name: Install Python dependencies
+        run: |
+          uv venv
+          uv pip install "huggingface_hub[hf_transfer]"
+
+      - name: Resolve model metadata
+        id: meta
+        env:
+          MODEL_ID: ${{ inputs.model_id }}
+          HF_REPO_ID_OVERRIDE: ${{ inputs.hf_repo_id }}
+        run: |
+          uv run python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
+          from embeddings_cpp.registry import get_model_spec
+
+          spec = get_model_spec(os.environ["MODEL_ID"])
+          repo_id = os.environ["HF_REPO_ID_OVERRIDE"] or spec.hf_repo_id
+          print(f"model_id={spec.model_id}")
+          print(f"slug={spec.slug}")
+          print(f"hf_repo_id={repo_id}")
+          print(f"artifact_file={spec.artifact_file}")
+          print(f"embedding_dim={spec.embedding_dim}")
+          PY
+
+      - name: Install Emscripten
+        run: |
+          git clone https://github.com/emscripten-core/emsdk.git /tmp/emsdk
+          cd /tmp/emsdk
+          ./emsdk install 5.0.6
+          ./emsdk activate 5.0.6
+
+      - name: Build dynamic browser artifacts
+        run: |
+          source /tmp/emsdk/emsdk_env.sh
+          ./scripts/build_browser_dynamic.sh
+
+      - name: Prepare Hugging Face web asset folder
+        env:
+          WEB_ASSET_VERSION: ${{ inputs.web_asset_version }}
+          MODEL_ID: ${{ steps.meta.outputs.model_id }}
+          HF_REPO_ID: ${{ steps.meta.outputs.hf_repo_id }}
+          ARTIFACT_FILE: ${{ steps.meta.outputs.artifact_file }}
+          EMBEDDING_DIM: ${{ steps.meta.outputs.embedding_dim }}
+        run: |
+          set -euo pipefail
+          root="hf-web-upload/browser/${WEB_ASSET_VERSION}"
+          mkdir -p \
+            "${root}/scripts" \
+            "${root}/demo/browser-wasm/assets" \
+            "${root}/demo/browser-wasm/vendor" \
+            "${root}/build-wasm-web-dyn" \
+            "${root}/build-wasm-webgpu-browser-dyn"
+
+          cp scripts/wasm_encode_page.html "${root}/scripts/"
+          cp scripts/wasm_persistent_encode_page.html "${root}/scripts/"
+          cp demo/browser-wasm/assets/snowflake-tokenizer.json "${root}/demo/browser-wasm/assets/"
+          cp demo/browser-wasm/vendor/web-tokenizers.js "${root}/demo/browser-wasm/vendor/"
+
+          cp build-wasm-web-dyn/embedding_wasm_model_encode.js "${root}/build-wasm-web-dyn/"
+          cp build-wasm-web-dyn/embedding_wasm_model_encode.wasm "${root}/build-wasm-web-dyn/"
+          cp build-wasm-web-dyn/embedding_wasm_model_runner.js "${root}/build-wasm-web-dyn/"
+          cp build-wasm-web-dyn/embedding_wasm_model_runner.wasm "${root}/build-wasm-web-dyn/"
+
+          cp build-wasm-webgpu-browser-dyn/embedding_wasm_model_encode.js "${root}/build-wasm-webgpu-browser-dyn/"
+          cp build-wasm-webgpu-browser-dyn/embedding_wasm_model_encode.wasm "${root}/build-wasm-webgpu-browser-dyn/"
+          cp build-wasm-webgpu-browser-dyn/embedding_wasm_model_runner.js "${root}/build-wasm-webgpu-browser-dyn/"
+          cp build-wasm-webgpu-browser-dyn/embedding_wasm_model_runner.wasm "${root}/build-wasm-webgpu-browser-dyn/"
+
+          uv run python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["WEB_ASSET_VERSION"]
+          repo_id = os.environ["HF_REPO_ID"]
+          base = f"https://huggingface.co/{repo_id}/resolve/main/browser/{version}/"
+          manifest = {
+              "schema_version": 1,
+              "model_id": os.environ["MODEL_ID"],
+              "hf_repo_id": repo_id,
+              "artifact_file": os.environ["ARTIFACT_FILE"],
+              "embedding_dim": int(os.environ["EMBEDDING_DIM"]),
+              "web_asset_version": version,
+              "base_url": base,
+              "tokenizer_json": "demo/browser-wasm/assets/snowflake-tokenizer.json",
+              "tokenizer_script": "demo/browser-wasm/vendor/web-tokenizers.js",
+              "runner_pages": {
+                  "ephemeral": "scripts/wasm_encode_page.html",
+                  "persistent": "scripts/wasm_persistent_encode_page.html",
+              },
+              "runtimes": {
+                  "wasm": {
+                      "build_dir": "build-wasm-web-dyn",
+                      "recommended": True,
+                  },
+                  "webgpu": {
+                      "build_dir": "build-wasm-webgpu-browser-dyn",
+                      "experimental": True,
+                  },
+              },
+          }
+          root = Path("hf-web-upload")
+          version_root = root / "browser" / version
+          (root / "web-assets.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          (version_root / "web-assets.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          PY
+
+          find hf-web-upload -maxdepth 5 -type f -print
+
+      - name: Upload web assets to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ steps.meta.outputs.hf_repo_id }}
+        run: |
+          uv run python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          api.upload_folder(
+              repo_id=os.environ["HF_REPO_ID"],
+              repo_type="model",
+              folder_path="hf-web-upload",
+              commit_message="Upload embeddings.cpp browser web assets",
+          )
+          print(f"uploaded web assets: https://huggingface.co/{os.environ['HF_REPO_ID']}")
+          PY

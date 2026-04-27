@@ -2,6 +2,15 @@
   "name": "@embeddings-cpp/web",
   "version": "0.1.0",
   "description": "Browser-first Snowflake embedding client for embeddings.cpp",
+  "homepage": "https://github.com/chux0519/embeddings.cpp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chux0519/embeddings.cpp.git",
+    "directory": "packages/web"
+  },
+  "bugs": {
+    "url": "https://github.com/chux0519/embeddings.cpp/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -13,7 +13,7 @@ The default model list is parsed from `README.md`, so the script stays aligned w
 Build and install the local extension first:
 
 ```bash
-cmake -S . -B build -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF
+cmake -S . -B build -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON -DEMBEDDINGS_CPP_BUILD_WASM_TOOLS=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF
 cmake --build build -j
 uv pip install --torch-backend cpu -r scripts/requirements.txt
 uv pip install -e .

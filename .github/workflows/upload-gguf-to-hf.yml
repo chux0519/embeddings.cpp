@@ -87,6 +87,7 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON \
+            -DEMBEDDINGS_CPP_BUILD_WASM_TOOLS=OFF \
             -DGGML_CPU_REPACK=ON \
             -DGGML_BLAS=OFF \
             -DGGML_OPENMP=OFF \

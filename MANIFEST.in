@@ -1,0 +1,21 @@
+include CMakeLists.txt
+include README.md
+include LICENSE
+recursive-include src *.cpp *.h
+recursive-include embeddings_cpp *.py *.pyi *.json
+recursive-include ggml CMakeLists.txt *.cmake *.h *.hpp *.c *.cpp *.m *.mm *.metal
+recursive-include hf_tokenizers CMakeLists.txt Cargo.toml Cargo.lock LICENSE README.md *.h *.hh *.cc *.cpp *.rs
+recursive-include hf_tokenizers/include *
+recursive-include hf_tokenizers/src *
+recursive-include hf_tokenizers/rust *
+recursive-include pybind11 CMakeLists.txt *.cmake *.h *.in *.py
+recursive-include pybind11/include *
+recursive-include pybind11/tools *
+prune build
+prune build-*
+prune models
+prune .venv
+prune node_modules
+prune packages/web/node_modules
+prune hf_tokenizers/web/build
+prune hf_tokenizers/web/node_modules

@@ -1,0 +1,111 @@
+name: Build Python Wheels
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/build-python-wheels.yml"
+      - "pyproject.toml"
+      - "setup.py"
+      - "MANIFEST.in"
+      - "CMakeLists.txt"
+      - "src/**"
+      - "embeddings_cpp/**"
+      - "ggml/**"
+      - "hf_tokenizers/**"
+      - "pybind11/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/build-python-wheels.yml"
+      - "pyproject.toml"
+      - "setup.py"
+      - "MANIFEST.in"
+      - "CMakeLists.txt"
+      - "src/**"
+      - "embeddings_cpp/**"
+      - "ggml/**"
+      - "hf_tokenizers/**"
+      - "pybind11/**"
+
+permissions:
+  contents: read
+
+jobs:
+  sdist:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build --sdist
+          python -m twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-sdist
+          path: dist/*.tar.gz
+
+  wheels:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            archs: x86_64
+            experimental: false
+          - name: linux-riscv64
+            os: ubuntu-24.04
+            archs: riscv64
+            experimental: true
+          - name: macos-arm64
+            os: macos-14
+            archs: arm64
+            experimental: false
+          - name: windows-x86_64
+            os: windows-2022
+            archs: AMD64
+            experimental: false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up QEMU for riscv64
+        if: matrix.archs == 'riscv64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: riscv64
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cibuildwheel
+        run: python -m pip install cibuildwheel==3.4.1
+
+      - name: Build wheels
+        env:
+          CIBW_ARCHS: ${{ matrix.archs }}
+        run: python -m cibuildwheel --output-dir wheelhouse
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-wheels-${{ matrix.name }}
+          path: wheelhouse/*.whl

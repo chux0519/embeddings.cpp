@@ -39,6 +39,7 @@ The mixed quantization policy is:
 cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
   -DEMBEDDINGS_CPP_ENABLE_PYBIND=ON \
+  -DEMBEDDINGS_CPP_BUILD_WASM_TOOLS=OFF \
   -DGGML_CPU_REPACK=ON \
   -DGGML_BLAS=OFF \
   -DGGML_OPENMP=OFF \

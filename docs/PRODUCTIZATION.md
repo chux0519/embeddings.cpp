@@ -63,6 +63,18 @@ dropped.
 6. renders the Hugging Face README
 7. uploads the GGUF and README to the target HF model repository
 
+`.github/workflows/upload-web-assets-to-hf.yml` publishes browser package
+assets to the same HF repository under:
+
+```text
+browser/<web_asset_version>/
+```
+
+The npm package default for Snowflake points at the `webpkg22` directory. The
+workflow also writes `web-assets.json` at the repo root and inside the versioned
+browser directory so later clients can discover the exact runtime files from a
+manifest instead of hard-coded paths.
+
 Required GitHub secret:
 
 - `HF_TOKEN`: Hugging Face token with write access to the target model repo.
@@ -95,19 +107,42 @@ model = load(
 
 ## Python Package Publishing
 
-The Python package is buildable through `setup.py`, but a PyPI release workflow
-is not yet in place. Track this before using the package as an external
-production dependency.
+The Python package is buildable through `setup.py`, and release workflows are
+in place for wheel validation and PyPI publishing.
 
 Planned release path:
 
-1. Add package metadata suitable for PyPI release review.
-2. Build wheels for the supported CPU platforms.
-3. Add a GitHub Actions workflow that builds, smoke tests, and publishes on
-   `v*` tags or manual dispatch.
-4. Store PyPI publishing credentials through trusted publishing or a scoped
-   secret.
-5. Document install and upgrade commands for the server deployment.
+1. Build validation wheels with `.github/workflows/build-python-wheels.yml`.
+2. Publish with `.github/workflows/publish-python-package.yml` on `v*` tags or
+   manual dispatch.
+3. Configure PyPI Trusted Publishing for the `pypi` GitHub environment.
+4. Keep `GGML_NATIVE=OFF` for PyPI wheels. Use `EMBEDDINGS_CPP_NATIVE=1` only
+   for local source builds or machine-specific images.
+5. Linux `riscv64` is included as an experimental wheel build target and is
+   gated for publishing until the wheel tag is accepted for the release path.
+
+Required PyPI setup:
+
+- Create or reserve the `embeddings-cpp` project name.
+- Configure PyPI Trusted Publishing for:
+  - repository: `chux0519/embeddings.cpp`
+  - workflow: `publish-python-package.yml`
+  - environment: `pypi`
+
+No long-lived PyPI token is required when Trusted Publishing is configured.
+
+## npm Package Publishing
+
+`.github/workflows/publish-web-package.yml` publishes `@embeddings-cpp/web` on
+`web-v*` tags or manual dispatch.
+
+Required npm setup:
+
+- Own or create the npm scope `@embeddings-cpp`.
+- Add a GitHub secret `NPM_TOKEN` with npm publish permission, or migrate the
+  workflow to npm Trusted Publishing after the package exists.
+- Run `.github/workflows/upload-web-assets-to-hf.yml` first for the matching
+  `web_asset_version` so the package defaults resolve on first install.
 
 ## HTTP Server
 

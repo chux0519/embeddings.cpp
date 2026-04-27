@@ -1,0 +1,23 @@
+[build-system]
+requires = [
+  "setuptools>=68",
+  "wheel",
+  "cmake>=3.22",
+  "ninja",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.cibuildwheel]
+build = "cp310-* cp311-* cp312-* cp313-*"
+skip = "pp* *-musllinux_* *-manylinux_i686 *-win32"
+test-command = "python -c \"import embeddings_cpp, embeddings_cpp._C as c; assert 'Snowflake/snowflake-arctic-embed-m-v2.0' in embeddings_cpp.list_models(); assert c.PoolingMethod.CLS\""
+
+[tool.cibuildwheel.linux]
+before-all = "curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal"
+environment = { PATH = "$HOME/.cargo/bin:$PATH", EMBEDDINGS_CPP_NATIVE = "0", CMAKE_BUILD_PARALLEL_LEVEL = "2" }
+
+[tool.cibuildwheel.macos]
+environment = { EMBEDDINGS_CPP_NATIVE = "0", MACOSX_DEPLOYMENT_TARGET = "11.0", CMAKE_BUILD_PARALLEL_LEVEL = "2" }
+
+[tool.cibuildwheel.windows]
+environment = { EMBEDDINGS_CPP_NATIVE = "0", CMAKE_BUILD_PARALLEL_LEVEL = "2" }

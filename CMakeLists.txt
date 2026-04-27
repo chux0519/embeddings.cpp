@@ -30,49 +30,58 @@ set(EMBEDDING_SOURCES
 add_library(embeddings STATIC ${EMBEDDING_SOURCES})
 target_link_libraries(embeddings PUBLIC ggml tokenizers_cpp)
 add_executable(embedding_cli src/cli.cpp)
-add_executable(embedding_wasm_bench src/wasm_bench.cpp)
-add_executable(embedding_wasm_model_bench
-    src/wasm_model_bench.cpp
-    src/base_model.cpp
-    src/gte.cpp
-    src/utils.cpp
-)
-add_executable(embedding_wasm_model_encode
-    src/wasm_model_encode.cpp
-    src/base_model.cpp
-    src/gte.cpp
-    src/utils.cpp
-)
-add_executable(embedding_wasm_model_runner
-    src/wasm_model_runner.cpp
-    src/base_model.cpp
-    src/gte.cpp
-    src/utils.cpp
-)
 add_executable(quantize src/quantize.cpp)
 add_executable(test_embedding tests/test_embedding.cpp)
 add_executable(test_tokenizer tests/test_tokenizer.cpp)
 
+if (EMSCRIPTEN)
+    set(EMBEDDINGS_CPP_BUILD_WASM_TOOLS_DEFAULT ON)
+else ()
+    set(EMBEDDINGS_CPP_BUILD_WASM_TOOLS_DEFAULT OFF)
+endif ()
+option(EMBEDDINGS_CPP_BUILD_WASM_TOOLS "embeddings.cpp: build wasm browser tools" ${EMBEDDINGS_CPP_BUILD_WASM_TOOLS_DEFAULT})
+if (EMBEDDINGS_CPP_BUILD_WASM_TOOLS)
+    add_executable(embedding_wasm_bench src/wasm_bench.cpp)
+    add_executable(embedding_wasm_model_bench
+        src/wasm_model_bench.cpp
+        src/base_model.cpp
+        src/gte.cpp
+        src/utils.cpp
+    )
+    add_executable(embedding_wasm_model_encode
+        src/wasm_model_encode.cpp
+        src/base_model.cpp
+        src/gte.cpp
+        src/utils.cpp
+    )
+    add_executable(embedding_wasm_model_runner
+        src/wasm_model_runner.cpp
+        src/base_model.cpp
+        src/gte.cpp
+        src/utils.cpp
+    )
+
+    target_link_libraries(embedding_wasm_bench PRIVATE embeddings)
+    target_link_libraries(embedding_wasm_model_bench PRIVATE ggml)
+    target_link_libraries(embedding_wasm_model_encode PRIVATE ggml)
+    target_link_libraries(embedding_wasm_model_runner PRIVATE ggml)
+
+    if (EMSCRIPTEN)
+        target_link_options(embedding_wasm_model_runner PRIVATE
+            "SHELL:-sALLOW_MEMORY_GROWTH=1"
+            "SHELL:-sASSERTIONS=0"
+            "SHELL:-sNO_EXIT_RUNTIME=1"
+            "SHELL:-sJSPI_EXPORTS=['runner_init','runner_encode','runner_encode_inline']"
+            "SHELL:-sEXPORTED_FUNCTIONS=['_runner_init','_runner_encode','_runner_encode_inline','_runner_last_json','_runner_last_error','_runner_reset']"
+            "SHELL:-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString']"
+        )
+    endif ()
+endif ()
 
 target_link_libraries(embedding_cli PRIVATE embeddings)
-target_link_libraries(embedding_wasm_bench PRIVATE embeddings)
-target_link_libraries(embedding_wasm_model_bench PRIVATE ggml)
-target_link_libraries(embedding_wasm_model_encode PRIVATE ggml)
-target_link_libraries(embedding_wasm_model_runner PRIVATE ggml)
 target_link_libraries(quantize PRIVATE embeddings)
 target_link_libraries(test_embedding PRIVATE embeddings)
 target_link_libraries(test_tokenizer PRIVATE embeddings)
-
-if (EMSCRIPTEN)
-    target_link_options(embedding_wasm_model_runner PRIVATE
-        "SHELL:-sALLOW_MEMORY_GROWTH=1"
-        "SHELL:-sASSERTIONS=0"
-        "SHELL:-sNO_EXIT_RUNTIME=1"
-        "SHELL:-sJSPI_EXPORTS=['runner_init','runner_encode','runner_encode_inline']"
-        "SHELL:-sEXPORTED_FUNCTIONS=['_runner_init','_runner_encode','_runner_encode_inline','_runner_last_json','_runner_last_error','_runner_reset']"
-        "SHELL:-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString']"
-    )
-endif ()
 
 option(EMBEDDINGS_CPP_ENABLE_PYBIND "embeddings.cpp: enable python binding" OFF)
 if (EMBEDDINGS_CPP_ENABLE_PYBIND)

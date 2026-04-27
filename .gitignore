@@ -3,6 +3,8 @@ __init__.pyi
 build
 build-wasm
 build-wasm-*
+dist/
+wheelhouse/
 .cache
 .venv
 *.gguf

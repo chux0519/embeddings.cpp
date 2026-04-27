@@ -80,9 +80,33 @@ The quantization tool will:
 3. Preserve metadata and non-quantizable tensors
 4. Output size comparison and compression statistics
 
-## Running Tests
+## Python Package Usage
 
-Before running, install embeddings.cpp:
+Install embeddings.cpp:
+```bash
+pip install "embeddings-cpp[hub]"
+```
+
+Load the published Snowflake GGUF directly from Hugging Face:
+
+```python
+from embeddings_cpp import load
+
+model = load("Snowflake/snowflake-arctic-embed-m-v2.0")
+vectors = model.batch_encode(["hello world", "你好，世界"])
+```
+
+For machine-specific local builds, `GGML_NATIVE` can be enabled explicitly:
+
+```bash
+EMBEDDINGS_CPP_NATIVE=1 pip install --no-binary embeddings-cpp embeddings-cpp
+```
+
+PyPI wheels keep `GGML_NATIVE=OFF` so they run on a broad range of CPUs.
+
+## Running From Source
+
+Before running source tests, install embeddings.cpp from the checkout:
 ```bash
 # use CMAKE_ARGS to add more cmake settings
 $env:CMAKE_ARGS="-DGGML_VULKAN=ON"

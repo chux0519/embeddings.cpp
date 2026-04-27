@@ -1,11 +1,12 @@
 export const DEFAULT_SNOWFLAKE_MODEL_URL = "https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf";
-const DEFAULT_RUNTIME_BASE_PATH = "/";
-const DEFAULT_TOKENIZER_JSON_PATH = "/demo/browser-wasm/assets/snowflake-tokenizer.json";
-const DEFAULT_TOKENIZER_SCRIPT_PATH = "/demo/browser-wasm/vendor/web-tokenizers.js";
+const RUNTIME_ASSET_VERSION = "webpkg22";
+const DEFAULT_SNOWFLAKE_ASSET_BASE_URL = `https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/browser/${RUNTIME_ASSET_VERSION}/`;
+const DEFAULT_RUNTIME_BASE_PATH = DEFAULT_SNOWFLAKE_ASSET_BASE_URL;
+const DEFAULT_TOKENIZER_JSON_PATH = "demo/browser-wasm/assets/snowflake-tokenizer.json";
+const DEFAULT_TOKENIZER_SCRIPT_PATH = "demo/browser-wasm/vendor/web-tokenizers.js";
 const DEFAULT_FILE_CACHE = "embeddings-browser-files-v1";
 const DEFAULT_MODEL_DB = "embeddings-browser-models-v1";
 const DEFAULT_MODEL_STORE = "files";
-const RUNTIME_ASSET_VERSION = "webpkg22";
 const BUILD_DIRS = {
     wasm: "build-wasm-web-dyn",
     webgpu: "build-wasm-webgpu-browser-dyn",
@@ -54,7 +55,8 @@ async function readResponseBytes(response, onProgress) {
     return out;
 }
 function joinUrl(base, path) {
-    return new URL(path, base.endsWith("/") ? base : `${base}/`).toString();
+    const relativePath = path.startsWith("/") ? path.slice(1) : path;
+    return new URL(relativePath, base.endsWith("/") ? base : `${base}/`).toString();
 }
 function withVersion(url, version = RUNTIME_ASSET_VERSION) {
     const next = new URL(url, browserOrigin() || undefined);
@@ -522,7 +524,7 @@ class BrowserSnowflakeEmbedder {
 }
 export async function createSnowflakeEmbedder(options) {
     ensureBrowser();
-    const runtimeBaseUrl = options.runtimeBaseUrl ?? (browserOrigin() || DEFAULT_RUNTIME_BASE_PATH);
+    const runtimeBaseUrl = options.runtimeBaseUrl ?? DEFAULT_RUNTIME_BASE_PATH;
     const tokenizerUrl = options.tokenizerUrl ?? joinUrl(runtimeBaseUrl, DEFAULT_TOKENIZER_JSON_PATH);
     const tokenizerScriptUrl = options.tokenizerScriptUrl ?? joinUrl(runtimeBaseUrl, DEFAULT_TOKENIZER_SCRIPT_PATH);
     const resolved = {
@@ -544,7 +546,7 @@ export function createSnowflakeDefaults(overrides = {}) {
         modelUrl: DEFAULT_SNOWFLAKE_MODEL_URL,
         runtime: "auto",
         runnerMode: "ephemeral",
-        runtimeBaseUrl: browserOrigin() || DEFAULT_RUNTIME_BASE_PATH,
+        runtimeBaseUrl: DEFAULT_RUNTIME_BASE_PATH,
         cache: true,
         ...overrides,
     };

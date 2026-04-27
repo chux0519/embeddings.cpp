@@ -44,17 +44,20 @@ class CMakeBuild(build_ext):
         # Set Python_EXECUTABLE instead if you use PYBIND11_FINDPYTHON
         # EXAMPLE_VERSION_INFO shows you how to pass a value into the C++ code
         # from Python.
+        native = os.environ.get("EMBEDDINGS_CPP_NATIVE", "0").lower() in {"1", "on", "true", "yes"}
+
         cmake_args = [
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}{os.sep}",
             f"-DPYTHON_EXECUTABLE={sys.executable}",
             f"-DCMAKE_BUILD_TYPE={cfg}",  # not used on MSVC, but no harm
             f"-DEMBEDDINGS_CPP_ENABLE_PYBIND=ON",
+            f"-DEMBEDDINGS_CPP_BUILD_WASM_TOOLS=OFF",
             f"-DBUILD_SHARED_LIBS=OFF",
             "-DGGML_CPU_REPACK=ON",
             "-DGGML_LLAMAFILE=ON",
             "-DGGML_BLAS=OFF",
             "-DGGML_OPENMP=OFF",
-            "-DGGML_NATIVE=ON",
+            f"-DGGML_NATIVE={'ON' if native else 'OFF'}",
             "-DGGML_CUDA=OFF",
             "-DGGML_VULKAN=OFF",
         ]
@@ -119,11 +122,11 @@ class CMakeBuild(build_ext):
         # Compile in parallel by default
         build_args += [f"-j"]
 
-        build_temp = os.path.abspath(os.path.join(os.path.dirname(__file__), "build", "tmp"))
+        build_temp = os.path.abspath(os.path.join(self.build_temp, ext.name))
         os.makedirs(build_temp, exist_ok=True)
 
         subprocess.run(["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True)
-        subprocess.run(["cmake", "--build", ".", *build_args], cwd=build_temp, check=True)
+        subprocess.run(["cmake", "--build", ".", "--target", "_C", *build_args], cwd=build_temp, check=True)
 
 
 HERE = Path(__file__).resolve().parent
@@ -131,11 +134,34 @@ version_match = re.search(r'__version__ = "(.*?)"', (HERE / "embeddings_cpp/__in
 if version_match is None:
     raise RuntimeError("Failed to find version string in embeddings_cpp/__init__.py")
 version = version_match.group(1)
+long_description = (HERE / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="embeddings-cpp",
     version=version,
     description="GGML-based text embedding inference with Hugging Face tokenizers.",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    author="embeddings.cpp contributors",
+    url="https://github.com/chux0519/embeddings.cpp",
+    project_urls={
+        "Source": "https://github.com/chux0519/embeddings.cpp",
+        "Issues": "https://github.com/chux0519/embeddings.cpp/issues",
+        "Snowflake GGUF": "https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp",
+    },
+    license="MIT",
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Developers",
+        "Intended Audience :: Science/Research",
+        "Programming Language :: C++",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    ],
     python_requires=">=3.10",
     packages=find_packages(),
     package_data={"embeddings_cpp": ["registry.json"]},

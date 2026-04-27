@@ -8,7 +8,7 @@ export interface SnowflakeStatusEvent {
     atMs?: number;
 }
 export interface SnowflakeEmbedderOptions {
-    modelUrl: string;
+    modelUrl?: string;
     runtime?: SnowflakeRuntime;
     runnerMode?: SnowflakeRunnerMode;
     runtimeBaseUrl?: string;

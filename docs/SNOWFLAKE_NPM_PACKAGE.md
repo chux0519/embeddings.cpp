@@ -47,8 +47,7 @@ The public API should stay narrow:
 import { createSnowflakeEmbedder } from "@embeddings-cpp/web";
 
 const embedder = await createSnowflakeEmbedder({
-  modelUrl:
-    "https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf",
+  cache: true,
 });
 
 const one = await embedder.embed("你好，世界");
@@ -69,10 +68,11 @@ await embedder.dispose();
 export type SnowflakeRuntime = "auto" | "webgpu" | "wasm";
 
 export interface SnowflakeEmbedderOptions {
-  modelUrl: string;
+  modelUrl?: string;
   runtime?: SnowflakeRuntime;
   runtimeBaseUrl?: string;
   tokenizerUrl?: string;
+  tokenizerScriptUrl?: string;
   cache?: boolean;
 }
 
@@ -123,6 +123,9 @@ Current runtime status:
 | `webgpu` | Experimental | Correctness is covered, but Snowflake custom ggml ops still fall back to CPU, so it can be slower until dedicated WebGPU kernels are implemented. |
 | `pthread` | Not exposed in v1 | The exported-function iframe runner can block the page. Re-enable only after a worker/proxy runner passes browser regression tests. |
 
+By default, `modelUrl`, `runtimeBaseUrl`, `tokenizerUrl`, and
+`tokenizerScriptUrl` point to the Snowflake Hugging Face artifact repository.
+
 `runtimeBaseUrl` should point to a hosted directory that contains:
 
 - `embedding_wasm_model_encode.js`
@@ -149,7 +152,22 @@ The npm package should stay small. Publish assets separately:
 Version 1 can assume these defaults:
 
 - model on Hugging Face
-- runtime assets on GitHub Pages or a CDN
+- runtime assets on Hugging Face under `browser/<web_asset_version>/`
+
+Current default asset base:
+
+```text
+https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/browser/webpkg22/
+```
+
+The upload workflow writes:
+
+- `web-assets.json`
+- `browser/<web_asset_version>/scripts/wasm_encode_page.html`
+- `browser/<web_asset_version>/scripts/wasm_persistent_encode_page.html`
+- `browser/<web_asset_version>/build-wasm-web-dyn/*`
+- `browser/<web_asset_version>/build-wasm-webgpu-browser-dyn/*`
+- tokenizer JSON and `web-tokenizers.js`
 
 Current repo layout:
 
