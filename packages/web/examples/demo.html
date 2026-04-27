@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>@embeddings-cpp/web demo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, sans-serif;
+      background: #fafaf9;
+      color: #1c1917;
+    }
+    body {
+      margin: 0;
+      background: #fafaf9;
+      color: #1c1917;
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 20px 14px 40px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.1;
+    }
+    p {
+      margin: 0;
+      color: #57534e;
+      line-height: 1.6;
+    }
+    section {
+      margin-top: 16px;
+    }
+    .panel {
+      border: 1px solid #d6d3d1;
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+    }
+    .grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+    .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #78716c;
+      letter-spacing: 0.02em;
+    }
+    .value {
+      margin-top: 4px;
+      font-size: 14px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    textarea,
+    input,
+    select,
+    button {
+      font: inherit;
+    }
+    textarea,
+    input,
+    select {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #d6d3d1;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff;
+      color: #1c1917;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 110px;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      background: #0f766e;
+      color: #fff;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #1d4ed8;
+    }
+    button.ghost {
+      background: #fff;
+      color: #292524;
+      border: 1px solid #d6d3d1;
+    }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+    .actions {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      margin-top: 12px;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    details summary {
+      cursor: pointer;
+      font-size: 13px;
+      color: #44403c;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <p class="label">Demo</p>
+      <h1>@embeddings-cpp/web</h1>
+      <p style="margin-top: 10px;">
+        Run Snowflake embeddings in the browser and copy the full vector directly.
+      </p>
+    </section>
+
+    <section class="panel">
+      <label class="label" for="model-url">Model URL</label>
+      <input id="model-url" type="text">
+      <div class="grid" style="margin-top: 12px;">
+        <div>
+          <label class="label" for="runtime-mode">Runtime</label>
+          <select id="runtime-mode">
+            <option value="auto" selected>Auto</option>
+            <option value="webgpu">WebGPU</option>
+            <option value="pthread">Pthreads</option>
+            <option value="wasm">WASM</option>
+          </select>
+        </div>
+        <div>
+          <label class="label" for="runner-mode">Runner Mode</label>
+          <select id="runner-mode">
+            <option value="persistent" selected>Persistent</option>
+            <option value="ephemeral">Ephemeral</option>
+          </select>
+        </div>
+      </div>
+      <label class="label" for="input-text" style="display:block; margin-top: 12px;">Input</label>
+      <textarea id="input-text">你好，世界。请把这句话编码成 embedding 向量。</textarea>
+      <div class="actions">
+        <button id="prefetch-btn" class="ghost">Prefetch</button>
+        <button id="embed-btn">Embed</button>
+        <button id="copy-vector-btn" class="secondary">Copy Vector</button>
+        <button id="copy-json-btn" class="secondary">Copy JSON</button>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel"><div class="label">Status</div><div id="status" class="value">Idle</div></div>
+      <div class="panel"><div class="label">Runtime</div><div id="runtime" class="value">-</div></div>
+      <div class="panel"><div class="label">Runner Mode</div><div id="runner-mode-value" class="value">-</div></div>
+      <div class="panel"><div class="label">Elapsed</div><div id="elapsed" class="value">-</div></div>
+      <div class="panel"><div class="label">Token Count</div><div id="token-count" class="value">-</div></div>
+      <div class="panel"><div class="label">Dimension</div><div id="dimension" class="value">-</div></div>
+    </section>
+
+    <section class="panel">
+      <div class="label">Vector Preview</div>
+      <div id="preview-meta" class="value mono" style="margin-bottom: 8px;">-</div>
+      <pre id="preview" class="mono"></pre>
+    </section>
+
+    <section class="panel">
+      <div class="label">Full Vector</div>
+      <textarea id="full-vector" class="mono" rows="8" readonly></textarea>
+    </section>
+
+    <section class="panel">
+      <details>
+        <summary>Details</summary>
+        <div style="margin-top: 12px;">
+          <div class="label">Stage Timings</div>
+          <pre id="timings" class="mono"></pre>
+        </div>
+        <div style="margin-top: 12px;">
+          <div class="label">Last Statuses</div>
+          <pre id="statuses" class="mono"></pre>
+        </div>
+        <div style="margin-top: 12px;">
+          <div class="label">JSON</div>
+          <pre id="report" class="mono"></pre>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <script type="module">
+    import { createSnowflakeEmbedder } from "/packages/web/dist/index.js?v=webgpupersist1";
+
+    const modelUrlEl = document.getElementById("model-url");
+    const runtimeModeEl = document.getElementById("runtime-mode");
+    const runnerModeEl = document.getElementById("runner-mode");
+    const inputEl = document.getElementById("input-text");
+    const prefetchBtn = document.getElementById("prefetch-btn");
+    const embedBtn = document.getElementById("embed-btn");
+    const copyVectorBtn = document.getElementById("copy-vector-btn");
+    const copyJsonBtn = document.getElementById("copy-json-btn");
+
+    const statusEl = document.getElementById("status");
+    const runtimeEl = document.getElementById("runtime");
+    const runnerModeValueEl = document.getElementById("runner-mode-value");
+    const elapsedEl = document.getElementById("elapsed");
+    const tokenCountEl = document.getElementById("token-count");
+    const dimensionEl = document.getElementById("dimension");
+    const previewMetaEl = document.getElementById("preview-meta");
+    const previewEl = document.getElementById("preview");
+    const fullVectorEl = document.getElementById("full-vector");
+    const timingsEl = document.getElementById("timings");
+    const statusesEl = document.getElementById("statuses");
+    const reportEl = document.getElementById("report");
+
+    modelUrlEl.value = `${window.location.origin}/models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`;
+
+    let embedder = null;
+    let embedderKey = "";
+    let busy = false;
+    let lastVectorText = "";
+    let lastReportText = "";
+    let statusTrail = [];
+
+    function setBusy(nextBusy, statusText = null) {
+      busy = nextBusy;
+      modelUrlEl.disabled = nextBusy;
+      runtimeModeEl.disabled = nextBusy;
+      runnerModeEl.disabled = nextBusy;
+      inputEl.disabled = nextBusy;
+      prefetchBtn.disabled = nextBusy;
+      embedBtn.disabled = nextBusy;
+      copyVectorBtn.disabled = nextBusy || !lastVectorText;
+      copyJsonBtn.disabled = nextBusy || !lastReportText;
+      if (statusText != null) {
+        statusEl.textContent = statusText;
+      }
+    }
+
+    function vectorSignature(values) {
+      let acc = 2166136261 >>> 0;
+      for (const value of values) {
+        const scaled = Math.round(value * 1e6);
+        acc ^= scaled >>> 0;
+        acc = Math.imul(acc, 16777619) >>> 0;
+      }
+      return acc.toString(16).padStart(8, "0");
+    }
+
+    function tailStages(limit = 12) {
+      return statusTrail.slice(-limit);
+    }
+
+    function firstStage(stage) {
+      return statusTrail.find((entry) => entry.stage === stage) || null;
+    }
+
+    function durationMs(startStage, endStage) {
+      const start = firstStage(startStage);
+      const end = firstStage(endStage);
+      if (!start || !end) return null;
+      return Math.max(0, end.at_ms - start.at_ms);
+    }
+
+    function summarizeTimings() {
+      const summary = {
+        tokenizer_script_ms: durationMs("tokenizer-script-loading", "tokenizer-script-ready"),
+        tokenizer_json_fetch_ms: durationMs("tokenizer-json-loading", "tokenizer-json-ready"),
+        tokenizer_fromjson_ms: durationMs("tokenizer-fromjson-start", "tokenizer-fromjson-ready"),
+        tokenizer_total_ms: durationMs("tokenizer-script-loading", "tokenizer-ready"),
+        runtime_page_load_ms: durationMs("runtime-page-loading", "runtime-page-ready"),
+        model_fetch_ms: durationMs("fetch-start", "fetch-ready"),
+        encode_request_ms: durationMs("encode-request-sent", "encode-result-ready"),
+      };
+      timingsEl.textContent = JSON.stringify(summary, null, 2);
+      return summary;
+    }
+
+    function pushStage(stage, detail = "", atMs = performance.now()) {
+      statusTrail.push({
+        at: new Date().toISOString(),
+        at_ms: atMs,
+        stage,
+        detail,
+      });
+      statusEl.textContent = detail ? `${stage}: ${detail}` : stage;
+    }
+
+    async function getEmbedder() {
+      const key = JSON.stringify({
+        modelUrl: modelUrlEl.value.trim(),
+        runtime: runtimeModeEl.value,
+        runnerMode: runnerModeEl.value,
+        origin: window.location.origin,
+      });
+      if (embedder && embedderKey === key) {
+        return embedder;
+      }
+      if (embedder) {
+        await embedder.dispose();
+      }
+      embedder = await createSnowflakeEmbedder({
+        modelUrl: modelUrlEl.value.trim(),
+        runtime: runtimeModeEl.value,
+        runnerMode: runnerModeEl.value,
+        runtimeBaseUrl: window.location.origin,
+        cache: true,
+        onStatus(event) {
+          pushStage(event.stage, event.detail || event.runtime || "", event.atMs || performance.now());
+        },
+      });
+      embedderKey = key;
+      return embedder;
+    }
+
+    function clearOutputs() {
+      previewMetaEl.textContent = "-";
+      previewEl.textContent = "";
+      fullVectorEl.value = "";
+      timingsEl.textContent = "";
+      statusesEl.textContent = "";
+      reportEl.textContent = "";
+      lastVectorText = "";
+      lastReportText = "";
+    }
+
+    function renderResult(data) {
+      runtimeEl.textContent = data.runtime || "-";
+      runnerModeValueEl.textContent = data.runner_mode || runnerModeEl.value;
+      elapsedEl.textContent = data.elapsed_ms == null ? "-" : `${data.elapsed_ms.toFixed(2)} ms`;
+      tokenCountEl.textContent = data.token_count == null ? "-" : String(data.token_count);
+      dimensionEl.textContent = data.dimension == null ? "-" : String(data.dimension);
+      previewMetaEl.textContent = data.preview_meta || "-";
+      previewEl.textContent = data.preview || "";
+      fullVectorEl.value = data.full_vector || "";
+      const timings = summarizeTimings();
+      const report = {
+        runtime: data.runtime,
+        runner_mode: data.runner_mode,
+        elapsed_ms: data.elapsed_ms,
+        token_count: data.token_count,
+        dimension: data.dimension,
+        stage_timings: timings,
+        last_statuses: tailStages(),
+      };
+      statusesEl.textContent = JSON.stringify(tailStages(), null, 2);
+      reportEl.textContent = JSON.stringify(report, null, 2);
+      lastReportText = JSON.stringify(report, null, 2);
+      copyJsonBtn.disabled = busy || !lastReportText;
+      copyVectorBtn.disabled = busy || !lastVectorText;
+    }
+
+    async function runWithBusy(label, fn) {
+      if (busy) return;
+      setBusy(true, label);
+      try {
+        await fn();
+      } catch (error) {
+        statusEl.textContent = `Failed: ${error.message || error}`;
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function prefetch() {
+      statusTrail = [];
+      clearOutputs();
+      const client = await getEmbedder();
+      await client.prefetch();
+      const info = client.info();
+      runtimeEl.textContent = info.runtime;
+      runnerModeValueEl.textContent = info.runnerMode;
+      statusEl.textContent = "Prefetch ready";
+      summarizeTimings();
+      statusesEl.textContent = JSON.stringify(tailStages(), null, 2);
+    }
+
+    async function embedOne() {
+      statusTrail = [];
+      clearOutputs();
+      const text = inputEl.value.trim();
+      if (!text) {
+        throw new Error("input text is empty");
+      }
+      const client = await getEmbedder();
+      const t0 = performance.now();
+      const result = await client.embed(text);
+      const elapsed = performance.now() - t0;
+      const vector = Array.from(result.vector);
+      lastVectorText = JSON.stringify(vector);
+      renderResult({
+        runtime: result.runtime,
+        runner_mode: result.runnerMode,
+        elapsed_ms: elapsed,
+        token_count: result.tokenCount,
+        dimension: result.vector.length,
+        preview: vector.slice(0, 16).map((value) => value.toFixed(6)).join(", "),
+        preview_meta: `sig=${vectorSignature(vector)} len=${vector.length} tokens=${result.tokenCount} input_chars=${text.length}`,
+        full_vector: lastVectorText,
+      });
+      statusEl.textContent = "Done";
+    }
+
+    async function copyText(text, fallbackEl) {
+      if (!text) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        fallbackEl.focus();
+        fallbackEl.select();
+        document.execCommand("copy");
+      }
+    }
+
+    prefetchBtn.addEventListener("click", async () => {
+      await runWithBusy("Prefetching", prefetch);
+    });
+
+    embedBtn.addEventListener("click", async () => {
+      await runWithBusy("Encoding", embedOne);
+    });
+
+    copyVectorBtn.addEventListener("click", async () => {
+      await runWithBusy("Copying vector", async () => {
+        await copyText(lastVectorText, fullVectorEl);
+        statusEl.textContent = "Vector copied";
+      });
+    });
+
+    copyJsonBtn.addEventListener("click", async () => {
+      await runWithBusy("Copying JSON", async () => {
+        await copyText(lastReportText, fullVectorEl);
+        statusEl.textContent = "JSON copied";
+      });
+    });
+
+    setBusy(false);
+  </script>
+</body>
+</html>

@@ -13,6 +13,7 @@ Current status:
 
 Repo example:
 
+- [packages/web/examples/demo.html](/home/yongsheng/repos/embeddings.cpp/packages/web/examples/demo.html)
 - [packages/web/examples/basic-browser.html](/home/yongsheng/repos/embeddings.cpp/packages/web/examples/basic-browser.html)
 - [packages/web/examples/mobile-diagnostics.html](/home/yongsheng/repos/embeddings.cpp/packages/web/examples/mobile-diagnostics.html)
 
@@ -55,6 +56,12 @@ Local smoke test:
 python3 scripts/browser_wasm_bench_server.py --host 127.0.0.1 --port 18081 --root "$PWD"
 npm install --no-save playwright
 node scripts/smoke_web_package.mjs
+```
+
+Usable browser demo:
+
+```text
+http://<host>:18081/packages/web/examples/demo.html
 ```
 
 Mobile diagnostics page:
