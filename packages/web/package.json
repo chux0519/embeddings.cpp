@@ -1,6 +1,6 @@
 {
   "name": "@embeddings-cpp/web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Browser-first Snowflake embedding client for embeddings.cpp",
   "homepage": "https://github.com/chux0519/embeddings.cpp#readme",
   "repository": {

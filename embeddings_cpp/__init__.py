@@ -16,4 +16,4 @@ def load(*args, **kwargs):
     return _load(*args, **kwargs)
 
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"

@@ -61,7 +61,7 @@ await embedder.prefetch();
 The default assets are expected at:
 
 ```text
-https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/browser/v0.1.0/
+https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/browser/v0.1.1/
 ```
 
 The repo workflow `.github/workflows/upload-web-assets-to-hf.yml` publishes

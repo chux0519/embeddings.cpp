@@ -70,7 +70,7 @@ assets to the same HF repository under:
 browser/<web_asset_version>/
 ```
 
-The npm package default for Snowflake points at the `v0.1.0` directory. The
+The npm package default for Snowflake points at the `v0.1.1` directory. The
 workflow also writes `web-assets.json` at the repo root and inside the versioned
 browser directory so later clients can discover the exact runtime files from a
 manifest instead of hard-coded paths.
