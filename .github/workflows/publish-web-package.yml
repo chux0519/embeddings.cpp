@@ -34,6 +34,12 @@ jobs:
       - name: Install package dependencies
         run: npm ci
 
+      - name: Prepare release version
+        working-directory: .
+        run: |
+          version="$(python scripts/resolve_version.py)"
+          python scripts/set_version.py "$version"
+
       - name: Check version consistency
         working-directory: .
         run: python scripts/check_version.py

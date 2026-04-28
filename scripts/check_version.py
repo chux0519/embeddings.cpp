@@ -52,7 +52,6 @@ def main() -> None:
         "packages/web/README.md",
         "docs/SNOWFLAKE_NPM_PACKAGE.md",
         "docs/PRODUCTIZATION.md",
-        ".github/workflows/upload-web-assets-to-hf.yml",
         "packages/web/examples/basic-browser.html",
         "packages/web/examples/demo.html",
         "packages/web/examples/mobile-diagnostics.html",
@@ -60,11 +59,24 @@ def main() -> None:
         "scripts/wasm_encode_page.html",
         "scripts/wasm_persistent_encode_page.html",
     ]
+    dynamic_asset_paths = [
+        ".github/workflows/upload-web-assets-to-hf.yml",
+    ]
     for path in paths_with_asset:
         text = read(path)
         require(
             asset_version in text,
             f"{path} does not mention expected asset version {asset_version}",
+            errors,
+        )
+        stale_webpkg = re.findall(r"webpkg\d+", text)
+        require(not stale_webpkg, f"{path} contains stale webpkg marker(s): {stale_webpkg}", errors)
+
+    for path in dynamic_asset_paths:
+        text = read(path)
+        require(
+            "scripts/resolve_version.py --asset" in text,
+            f"{path} does not derive the browser asset version dynamically",
             errors,
         )
         stale_webpkg = re.findall(r"webpkg\d+", text)

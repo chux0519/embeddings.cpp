@@ -130,10 +130,54 @@ class CMakeBuild(build_ext):
 
 
 HERE = Path(__file__).resolve().parent
-version_match = re.search(r'__version__ = "(.*?)"', (HERE / "embeddings_cpp/__init__.py").read_text(encoding="utf-8"))
-if version_match is None:
-    raise RuntimeError("Failed to find version string in embeddings_cpp/__init__.py")
-version = version_match.group(1)
+
+
+def _normalize_tag_version(tag: str) -> str | None:
+    if tag.startswith("refs/tags/"):
+        tag = tag.removeprefix("refs/tags/")
+    if tag.startswith("v"):
+        version = tag.removeprefix("v")
+    else:
+        return None
+    return version if re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version) else None
+
+
+def _git_tag_version() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--exact-match", "HEAD"],
+            cwd=HERE,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+    for tag in result.stdout.splitlines():
+        version = _normalize_tag_version(tag.strip())
+        if version is not None:
+            return version
+    return None
+
+
+def _source_version() -> str:
+    version_match = re.search(
+        r'__version__ = "(.*?)"',
+        (HERE / "embeddings_cpp/__init__.py").read_text(encoding="utf-8"),
+    )
+    if version_match is None:
+        raise RuntimeError("Failed to find version string in embeddings_cpp/__init__.py")
+    return version_match.group(1)
+
+
+version = (
+    os.environ.get("EMBEDDINGS_CPP_VERSION")
+    or _normalize_tag_version(os.environ.get("GITHUB_REF_NAME", ""))
+    or _normalize_tag_version(os.environ.get("GITHUB_REF", ""))
+    or _git_tag_version()
+    or _source_version()
+)
 long_description = (HERE / "README.md").read_text(encoding="utf-8")
 
 setup(

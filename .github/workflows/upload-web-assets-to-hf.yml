@@ -9,9 +9,9 @@ on:
         default: "Snowflake/snowflake-arctic-embed-m-v2.0"
         type: string
       web_asset_version:
-        description: "Browser asset version directory"
-        required: true
-        default: "v0.1.1"
+        description: "Browser asset version directory. Leave empty to derive v<version> from the current git tag/source."
+        required: false
+        default: ""
         type: string
       hf_repo_id:
         description: "Override target Hugging Face model repo. Leave empty to use registry."
@@ -75,6 +75,18 @@ jobs:
           print(f"embedding_dim={spec.embedding_dim}")
           PY
 
+      - name: Resolve web asset version
+        id: web-version
+        env:
+          WEB_ASSET_VERSION_INPUT: ${{ inputs.web_asset_version }}
+        run: |
+          if [ -n "$WEB_ASSET_VERSION_INPUT" ]; then
+            version="$WEB_ASSET_VERSION_INPUT"
+          else
+            version="$(python scripts/resolve_version.py --asset)"
+          fi
+          echo "web_asset_version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Install Emscripten
         run: |
           git clone https://github.com/emscripten-core/emsdk.git /tmp/emsdk
@@ -89,7 +101,7 @@ jobs:
 
       - name: Prepare Hugging Face web asset folder
         env:
-          WEB_ASSET_VERSION: ${{ inputs.web_asset_version }}
+          WEB_ASSET_VERSION: ${{ steps.web-version.outputs.web_asset_version }}
           MODEL_ID: ${{ steps.meta.outputs.model_id }}
           HF_REPO_ID: ${{ steps.meta.outputs.hf_repo_id }}
           ARTIFACT_FILE: ${{ steps.meta.outputs.artifact_file }}
