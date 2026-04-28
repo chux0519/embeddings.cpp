@@ -3221,7 +3221,10 @@ static bool create_webgpu_device(ggml_backend_webgpu_reg_context * ctx) {
                 ctx->webgpu_global_ctx->adapter = std::move(adapter);
             }),
         UINT64_MAX);
-    GGML_ASSERT(ctx->webgpu_global_ctx->adapter != nullptr);
+    if (ctx->webgpu_global_ctx->adapter == nullptr) {
+        GGML_LOG_ERROR("ggml_webgpu: no WebGPU adapter available\n");
+        return false;
+    }
 
     ctx->webgpu_global_ctx->adapter.GetLimits(&ctx->webgpu_global_ctx->capabilities.limits);
 
@@ -3238,7 +3241,10 @@ static bool create_webgpu_device(ggml_backend_webgpu_reg_context * ctx) {
     wgpu::SupportedFeatures features;
     ctx->webgpu_global_ctx->adapter.GetFeatures(&features);
     // we require f16 support
-    GGML_ASSERT(ctx->webgpu_global_ctx->adapter.HasFeature(wgpu::FeatureName::ShaderF16));
+    if (!ctx->webgpu_global_ctx->adapter.HasFeature(wgpu::FeatureName::ShaderF16)) {
+        GGML_LOG_ERROR("ggml_webgpu: adapter does not support shader-f16; WebGPU backend disabled\n");
+        return false;
+    }
 
 #ifndef __EMSCRIPTEN__
     // Accept f16 subgroup matrix configurations (square or non-square).
@@ -3328,7 +3334,10 @@ static bool create_webgpu_device(ggml_backend_webgpu_reg_context * ctx) {
                 ctx->webgpu_global_ctx->device = std::move(device);
             }),
         UINT64_MAX);
-    GGML_ASSERT(ctx->webgpu_global_ctx->device != nullptr);
+    if (ctx->webgpu_global_ctx->device == nullptr) {
+        GGML_LOG_ERROR("ggml_webgpu: no WebGPU device available\n");
+        return false;
+    }
 
     ggml_webgpu_init_memset_pipeline(ctx->webgpu_global_ctx);
     ggml_webgpu_create_buffer(ctx->webgpu_global_ctx->device, ctx->webgpu_global_ctx->memset_params_buf,
@@ -3840,7 +3849,10 @@ static ggml_backend_dev_t ggml_backend_webgpu_reg_get_device(ggml_backend_reg_t 
 
     ggml_backend_webgpu_reg_context * reg_ctx = static_cast<ggml_backend_webgpu_reg_context *>(reg->context);
 
-    create_webgpu_device(reg_ctx);
+    if (!create_webgpu_device(reg_ctx)) {
+        WEBGPU_CPU_PROFILE_TOTAL_END(reg_get_device, reg_ctx->webgpu_global_ctx);
+        return nullptr;
+    }
 
     static ggml_backend_webgpu_device_context device_ctx;
     device_ctx.device_name            = GGML_WEBGPU_NAME;
@@ -3925,15 +3937,24 @@ ggml_backend_reg_t ggml_backend_webgpu_reg() {
             UINT64_MAX);
     }
 
-    if (adapter != nullptr) {
+    if (adapter != nullptr && adapter.HasFeature(wgpu::FeatureName::ShaderF16)) {
         ctx->device_count = 1;
+    } else if (adapter != nullptr) {
+        GGML_LOG_ERROR("ggml_webgpu: adapter does not support shader-f16; WebGPU backend disabled\n");
     }
 
     return &reg;
 }
 
 ggml_backend_t ggml_backend_webgpu_init(void) {
-    ggml_backend_dev_t dev = ggml_backend_reg_dev_get(ggml_backend_webgpu_reg(), 0);
+    ggml_backend_reg_t reg = ggml_backend_webgpu_reg();
+    if (ggml_backend_reg_dev_count(reg) == 0) {
+        return nullptr;
+    }
+    ggml_backend_dev_t dev = ggml_backend_reg_dev_get(reg, 0);
+    if (dev == nullptr) {
+        return nullptr;
+    }
 
     return ggml_backend_webgpu_backend_init(dev, nullptr);
 }

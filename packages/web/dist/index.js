@@ -1,5 +1,5 @@
 export const DEFAULT_SNOWFLAKE_MODEL_URL = "https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf";
-const RUNTIME_ASSET_VERSION = "webgpu-asyncify-20260428";
+const RUNTIME_ASSET_VERSION = "webgpu-noabort-20260428";
 const DEFAULT_SNOWFLAKE_ASSET_BASE_URL = `https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/browser/${RUNTIME_ASSET_VERSION}/`;
 const DEFAULT_RUNTIME_BASE_PATH = DEFAULT_SNOWFLAKE_ASSET_BASE_URL;
 const DEFAULT_TOKENIZER_JSON_PATH = "demo/browser-wasm/assets/snowflake-tokenizer.json";
