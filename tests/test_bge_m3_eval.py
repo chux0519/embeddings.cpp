@@ -7,8 +7,9 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.bge_m3_eval import apply_default_thresholds, build_analysis, build_cases, compare, status
-from scripts.bge_m3_eval import threshold_exit_code
+from scripts.embedding_eval_common import compare_vectors as compare
+from scripts.embedding_eval_common import status_from_metrics as status
+from scripts.model_bench import apply_default_thresholds, build_analysis, build_cases, threshold_exit_code
 
 
 def test_compare_reports_cosine_and_distance_metrics():
@@ -120,6 +121,7 @@ def test_build_analysis_compares_isolated_runner_performance():
         "case": "mixed_batch_4",
         "variant": "fp16",
         "status": "within_tolerance",
+        "tier": "unknown",
         "min_cos": 0.9991,
     }
     comparison = analysis["performance_comparison"][0]

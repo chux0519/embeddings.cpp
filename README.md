@@ -139,9 +139,9 @@ Include CPU performance comparisons:
 uv run scripts/alignment.py --convert-missing --benchmark
 ```
 
-For new model benchmark work, prefer the registry-driven unified runner. It
-uses the shared benchmark protocol and structured model config, and currently
-focuses on Python CPU, TEI engine ORT, and `embeddings.cpp`:
+For model benchmark work, use the registry-driven unified runner. It uses the
+shared benchmark protocol and structured model config, and currently focuses on
+Python CPU, TEI engine ORT, and `embeddings.cpp`:
 
 ```bash
 uv run scripts/model_bench.py \
@@ -154,12 +154,14 @@ uv run scripts/model_bench.py \
 `tei_engine_ort` requires a local `text-embeddings-inference` checkout at
 `../text-embeddings-inference` or an explicit `--tei-repo-dir`.
 
-For the focused BGE-M3 single-request and batch validation, including Python
-CPU vs `embeddings.cpp` latency, throughput, RSS, cosine correctness, and an
-optimize-vs-quantize recommendation:
+For focused BGE-M3 single-request and batch validation without TEI:
 
 ```bash
-uv run scripts/bge_m3_eval.py --convert-missing --batch-sizes 1 4 8
+uv run scripts/model_bench.py \
+  --models BAAI/bge-m3 \
+  --runners python_cpu embeddings_cpp \
+  --convert-missing \
+  --batch-sizes 1 4 8
 ```
 
 By default the cosine thresholds are taken from the model registry and are used
@@ -167,7 +169,9 @@ as report tolerances, not process-failure gates. To explore looser product
 tolerances, pass them explicitly:
 
 ```bash
-uv run scripts/bge_m3_eval.py \
+uv run scripts/model_bench.py \
+  --models BAAI/bge-m3 \
+  --runners python_cpu embeddings_cpp \
   --batch-sizes 1 4 8 \
   --min-cos 0.95 \
   --batch-min-cos 0.95 \
@@ -182,7 +186,9 @@ correctness and speed baseline, sweep k-quant variants and CPU repack modes:
 
 ```bash
 cmake --build build --target quantize
-uv run scripts/bge_m3_eval.py \
+uv run scripts/model_bench.py \
+  --models BAAI/bge-m3 \
+  --runners python_cpu embeddings_cpp \
   --convert-missing \
   --quantize-missing \
   --quantizations fp16 q8_0 q6_k q4_k \
@@ -190,7 +196,7 @@ uv run scripts/bge_m3_eval.py \
   --batch-sizes 1 4 8
 ```
 
-The generated Markdown report includes correctness, raw performance,
+The generated `model_bench_*.md` report includes correctness, raw performance,
 optimization-sweep, and best-variant-by-batch tables under `scripts/output/`.
 Stable benchmark summaries are kept under [`benchmarks/`](benchmarks/README.md)
 and linked from the README instead of copying every model's full benchmark table

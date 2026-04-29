@@ -19,6 +19,7 @@ def test_model_config_comes_from_registry():
     assert config.embedding_dim == 1024
     assert config.python_min_cos == 0.999
     assert config.batch_min_cos == 0.999999
+    assert config.quantized_batch_min_cos == 0.999999
     assert config.batch_sizes == [1, 4, 8]
     assert config.gguf_paths["q8_0"].endswith("models/bge-m3.q8_0.gguf")
 
