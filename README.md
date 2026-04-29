@@ -179,7 +179,9 @@ The generated Markdown report includes correctness, raw performance,
 optimization-sweep, and best-variant-by-batch tables under `scripts/output/`.
 Stable benchmark summaries are kept under [`benchmarks/`](benchmarks/README.md)
 and linked from the README instead of copying every model's full benchmark table
-inline. The current BGE-M3 report is [`benchmarks/bge-m3.md`](benchmarks/bge-m3.md).
+inline. New model reports should follow the shared
+[`benchmarks/STANDARD.md`](benchmarks/STANDARD.md) protocol. The current BGE-M3
+report is [`benchmarks/bge-m3.md`](benchmarks/bge-m3.md).
 
 The benchmark report compares Python `transformers` CPU, `embeddings.cpp`, and
 TEI when enabled for the model. For Snowflake on CPU, the only cross-implementation

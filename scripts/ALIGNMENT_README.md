@@ -77,7 +77,9 @@ uv run scripts/alignment.py \
 
 ## Correctness Cases
 
-The script includes cases intended to catch both numerical drift and batching bugs:
+The benchmark standard is documented in
+[`benchmarks/STANDARD.md`](../benchmarks/STANDARD.md). The script includes cases
+intended to catch both numerical drift and batching bugs:
 
 - Single English and Chinese inputs
 - Mixed Chinese/English batch
@@ -86,7 +88,9 @@ The script includes cases intended to catch both numerical drift and batching bu
 - `snowflake_batch_regression`: `["A cute cat....", "A cute cat."]`
 - Internal `embeddings.cpp` batch-vs-single comparison for every case
 
-For C++ correctness, the default threshold is `min cosine >= 0.999` against Python CPU. Internal batch-vs-single uses `min cosine >= 0.999999`.
+Cosine thresholds should be read as drift tolerances. Invalid output is a
+failure; lower cosine is a reported quality metric unless the caller explicitly
+uses a CI gate such as `--fail-on-threshold` in scripts that support it.
 
 ## TEI
 

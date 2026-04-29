@@ -4,6 +4,8 @@ This report summarizes the BGE-M3 CPU evaluation from 2026-04-29. The runs use
 deterministic randomized realistic long-text inputs shared with the Snowflake
 profiling path, seed `20260429`, and batch sizes `1`, `4`, and `8`.
 
+This report follows the shared [benchmark standard](STANDARD.md).
+
 Cosine thresholds are product tolerances, not process-failure gates. A lower
 cosine reports larger drift; it is only an execution failure when embeddings are
 not produced or contain invalid values. Use `--fail-on-threshold` for CI gates.
