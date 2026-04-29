@@ -127,16 +127,17 @@ python tests/test_tokenizer.py
 
 ## Alignment and Benchmarking
 
-Run correctness checks for every model mentioned in this README:
+Run registry-driven correctness and benchmark checks for all supported registry
+models:
 
 ```bash
-uv run scripts/alignment.py --convert-missing
+uv run scripts/model_bench.py --all-models --convert-missing
 ```
 
-Include CPU performance comparisons:
+Use `--models-file` for a stable subset:
 
 ```bash
-uv run scripts/alignment.py --convert-missing --benchmark
+uv run scripts/model_bench.py --models-file scripts/registry_models.txt --convert-missing
 ```
 
 For model benchmark work, use the registry-driven unified runner. It uses the
@@ -313,26 +314,22 @@ uv run scripts/benchmark.py \
 Pin the C++ CPU thread count while tuning:
 
 ```bash
-uv run scripts/alignment.py --benchmark --cpp-threads 8
+uv run scripts/model_bench.py --all-models --cpp-threads 8
 ```
 
-For models also supported by `text-embeddings-inference`, start TEI as an additional comparator:
+For models also supported by `text-embeddings-inference`, include TEI engine ORT
+as an additional performance comparator:
 
 ```bash
-uv run scripts/alignment.py \
+uv run scripts/model_bench.py \
   --models Snowflake/snowflake-arctic-embed-m-v2.0 \
-  --convert-missing \
-  --tei-start \
-  --benchmark
+  --runners python_cpu embeddings_cpp tei_engine_ort
 ```
 
 For registry-driven Snowflake checks against the optimized mixed GGUF:
 
 ```bash
 uv run scripts/correctness.py --model-id Snowflake/snowflake-arctic-embed-m-v2.0 --benchmark
-uv run scripts/benchmark.py \
-  --model-id Snowflake/snowflake-arctic-embed-m-v2.0 \
-  --gguf-path models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf
 ```
 
 ## Loading Published GGUF Models
@@ -478,10 +475,10 @@ For client compatibility, the main request surfaces are:
 - embeddings.cpp: `POST /embed`
 - OpenAI-style clients: `POST /v1/embeddings`
 
-For correctness work, the Snowflake path is checked against both Python
-`transformers` CPU output and TEI. See `docs/TEST_MATRIX.md` and
-`scripts/server_compare.py`. For performance work, `scripts/alignment.py` and
-`scripts/benchmark.py` report both inference speed and RSS memory.
+For correctness work, the Snowflake path is checked against Python
+`transformers` CPU output and optionally TEI engine ORT. See
+`docs/TEST_MATRIX.md` and `scripts/server_compare.py`. For performance work,
+`scripts/model_bench.py` reports inference speed and RSS memory.
 
 Container images can be published to GHCR with
 `.github/workflows/publish-server-image.yml`, which publishes tags in the form

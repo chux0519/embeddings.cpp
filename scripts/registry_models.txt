@@ -1,0 +1,3 @@
+# Stable registry subset for scripts/model_bench.py.
+BAAI/bge-m3
+Snowflake/snowflake-arctic-embed-m-v2.0

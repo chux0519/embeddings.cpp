@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from embeddings_cpp.registry import get_model_spec
-from scripts.model_bench import build_cases, build_correctness_rows, model_config, tolerance_tier
+from scripts.model_bench import build_cases, build_correctness_rows, default_quantizations, model_config, tolerance_tier
 
 
 def test_model_config_comes_from_registry():
@@ -22,6 +22,14 @@ def test_model_config_comes_from_registry():
     assert config.quantized_batch_min_cos == 0.999999
     assert config.batch_sizes == [1, 4, 8]
     assert config.gguf_paths["q8_0"].endswith("models/bge-m3.q8_0.gguf")
+
+
+def test_default_quantizations_follow_registry_artifact_or_source_dtype():
+    bge = get_model_spec("BAAI/bge-m3")
+    snowflake = get_model_spec("Snowflake/snowflake-arctic-embed-m-v2.0")
+
+    assert default_quantizations(bge) == ["fp16"]
+    assert default_quantizations(snowflake) == ["q4_k_mlp_q8_attn"]
 
 
 def test_build_cases_uses_shared_randomized_long_texts():

@@ -21,7 +21,7 @@ DEFAULT_RUNNERS = ["python_cpu", "embeddings_cpp"]
 REPACK_ENV = "EMBEDDINGS_CPP_CPU_REPACK"
 sys.path.insert(0, str(ROOT))
 
-from embeddings_cpp.registry import ModelSpec, get_model_spec
+from embeddings_cpp.registry import ModelSpec, get_model_spec, list_models
 from scripts.embedding_eval_common import (
     RssSampler,
     compare_vectors,
@@ -69,6 +69,14 @@ def model_config(spec: ModelSpec, models_dir: Path, quantizations: list[str]) ->
         max_batch_tokens=benchmark.get("max_batch_tokens"),
         gguf_paths=gguf_paths,
     )
+
+
+def default_quantizations(spec: ModelSpec) -> list[str]:
+    if spec.artifact_file:
+        quantization = spec.artifact_file.removesuffix(".gguf").removeprefix(f"{spec.slug}.")
+        return [quantization]
+    source_quantization = {"f16": "fp16", "f32": "fp32"}.get(spec.source_dtype, spec.source_dtype)
+    return [source_quantization]
 
 
 def apply_default_thresholds(args: argparse.Namespace) -> None:
@@ -140,6 +148,27 @@ def build_cases(seed: int) -> dict[str, list[str]]:
             make_realistic_texts(1, seed + 29)[0],
         ],
     }
+
+
+def parse_model_ids(args: argparse.Namespace) -> list[str]:
+    model_ids: list[str] = []
+    if args.all_models:
+        model_ids.extend(list_models())
+    if args.models_file:
+        model_ids.extend(
+            line.strip()
+            for line in args.models_file.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+    if args.models:
+        model_ids.extend(args.models)
+    if not model_ids:
+        model_ids = ["BAAI/bge-m3"]
+    deduped: list[str] = []
+    for model_id in model_ids:
+        if model_id not in deduped:
+            deduped.append(model_id)
+    return deduped
 
 
 def load_python_runner(spec: ModelSpec, torch_threads: int) -> Callable[[list[str]], list[list[float]]]:
@@ -404,6 +433,8 @@ def run_child(
     env = os.environ.copy()
     env.setdefault("NO_PROXY", "127.0.0.1,localhost")
     env.setdefault("no_proxy", "127.0.0.1,localhost")
+    spec = get_model_spec(model_id)
+    env.update(spec.runtime_env)
     if args.cpp_threads:
         env["EMBEDDINGS_CPP_THREADS"] = str(args.cpp_threads)
     if runner == "embeddings_cpp":
@@ -863,7 +894,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Unified model benchmark for Python CPU, TEI engine ORT, and embeddings.cpp."
     )
-    parser.add_argument("--models", nargs="+", default=["BAAI/bge-m3"], help="Registered model ids or aliases.")
+    parser.add_argument("--models", nargs="+", help="Registered model ids or aliases.")
+    parser.add_argument("--models-file", type=Path, help="Optional file with one registered model id or alias per line.")
+    parser.add_argument("--all-models", action="store_true", help="Benchmark every non-alias model in the registry.")
     parser.add_argument(
         "--runners",
         nargs="+",
@@ -876,7 +909,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Optional fp16 GGUF source path for a single model. Quantized paths are derived from this stem.",
     )
-    parser.add_argument("--quantizations", nargs="+", default=["fp16"])
+    parser.add_argument(
+        "--quantizations",
+        nargs="+",
+        help="GGUF variants to evaluate. Defaults to each model's registry artifact or source dtype.",
+    )
     parser.add_argument(
         "--quantize-missing",
         action="store_true",
@@ -938,15 +975,17 @@ def main() -> int:
         raise ValueError("--batch-sizes values must be positive")
 
     configs: list[ModelBenchConfig] = []
-    specs = [get_model_spec(model_id) for model_id in args.models]
+    model_ids = parse_model_ids(args)
+    specs = [get_model_spec(model_id) for model_id in model_ids]
     if args.gguf_path and len(specs) != 1:
         raise ValueError("--gguf-path can only be used with a single --models entry")
-    quantizations = []
-    for quantization in args.quantizations:
-        normalized = "fp16" if quantization == "f16" else quantization
-        if normalized not in quantizations:
-            quantizations.append(normalized)
     for spec in specs:
+        quantizations = []
+        requested_quantizations = args.quantizations or default_quantizations(spec)
+        for quantization in requested_quantizations:
+            normalized = "fp16" if quantization == "f16" else quantization
+            if normalized not in quantizations:
+                quantizations.append(normalized)
         config = model_config(spec, args.models_dir, quantizations)
         if args.gguf_path:
             config = ModelBenchConfig(

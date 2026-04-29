@@ -37,12 +37,17 @@ def main() -> int:
         quantizations = default_quantizations(spec)
     min_cos = str(spec.correctness.get("python_min_cos", 0.999))
     batch_min_cos = str(spec.correctness.get("batch_min_cos", 0.999999))
+    runners = ["python_cpu", "embeddings_cpp"]
+    if args.with_tei:
+        runners.append("tei_engine_ort")
 
     cmd = [
         sys.executable,
-        "scripts/alignment.py",
+        "scripts/model_bench.py",
         "--models",
         spec.model_id,
+        "--runners",
+        *runners,
         "--quantizations",
         *quantizations,
         "--min-cos",
@@ -58,11 +63,8 @@ def main() -> int:
         cmd.extend(["--cpp-threads", str(spec.benchmark["default_threads"])])
     if args.convert_missing:
         cmd.append("--convert-missing")
-    if args.with_tei:
-        cmd.append("--tei-start")
     if args.benchmark:
-        cmd.append("--benchmark")
-        cmd.extend(["--benchmark-batches", *[str(x) for x in spec.benchmark.get("batch_sizes", [1, 2, 4, 8])]])
+        cmd.extend(["--batch-sizes", *[str(x) for x in spec.benchmark.get("batch_sizes", [1, 2, 4, 8])]])
 
     return subprocess.run(cmd, check=False).returncode
 
