@@ -1,4 +1,5 @@
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -14,6 +15,24 @@ PLAT_TO_CMAKE = {
     "win-arm32": "ARM",
     "win-arm64": "ARM64",
 }
+
+
+def _is_riscv64_target() -> bool:
+    hints = [
+        os.environ.get("CIBW_ARCHS", ""),
+        os.environ.get("CIBW_BUILD", ""),
+        os.environ.get("AUDITWHEEL_ARCH", ""),
+        platform.machine(),
+    ]
+    return any("riscv64" in hint.lower() for hint in hints)
+
+
+def _platform_cmake_args() -> list[str]:
+    if not _is_riscv64_target():
+        return []
+    # manylinux riscv64 currently ships binutils that reject the newer "zvfh"
+    # ISA extension spelling. Keep RVV enabled, but avoid fp16 vector kernels.
+    return ["-DGGML_RV_ZVFH=OFF"]
 
 
 # A CMakeExtension needs a sourcedir instead of a file list.
@@ -61,6 +80,7 @@ class CMakeBuild(build_ext):
             "-DGGML_CUDA=OFF",
             "-DGGML_VULKAN=OFF",
         ]
+        cmake_args += _platform_cmake_args()
         build_args = []
         # Adding CMake arguments set as environment variable
         # (needed e.g. to build for ARM OSx on conda-forge)
