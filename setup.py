@@ -30,9 +30,16 @@ def _is_riscv64_target() -> bool:
 def _platform_cmake_args() -> list[str]:
     if not _is_riscv64_target():
         return []
-    # manylinux riscv64 currently ships binutils that reject the newer "zvfh"
-    # ISA extension spelling. Keep RVV enabled, but avoid fp16 vector kernels.
-    return ["-DGGML_RV_ZVFH=OFF"]
+    # Published riscv64 wheels must run on the baseline manylinux riscv64
+    # target. Do not bake optional vector/fp16/cache-hint extensions into the
+    # wheel; users who want native RISC-V tuning can still build from source.
+    return [
+        "-DGGML_RVV=OFF",
+        "-DGGML_RV_ZFH=OFF",
+        "-DGGML_RV_ZVFH=OFF",
+        "-DGGML_RV_ZICBOP=OFF",
+        "-DGGML_RV_ZIHINTPAUSE=OFF",
+    ]
 
 
 # A CMakeExtension needs a sourcedir instead of a file list.
