@@ -51,15 +51,19 @@ jobs:
           - name: linux-x86_64
             os: ubuntu-24.04
             archs: x86_64
+            build: "cp310-* cp311-* cp312-* cp313-*"
           - name: linux-riscv64
             os: ubuntu-24.04
             archs: riscv64
+            build: "cp312-*"
           - name: macos-arm64
             os: macos-14
             archs: arm64
+            build: "cp310-* cp311-* cp312-* cp313-*"
           - name: windows-x86_64
             os: windows-2022
             archs: AMD64
+            build: "cp310-* cp311-* cp312-* cp313-*"
 
     steps:
       - uses: actions/checkout@v4
@@ -92,6 +96,7 @@ jobs:
       - name: Build wheels
         env:
           CIBW_ARCHS: ${{ matrix.archs }}
+          CIBW_BUILD: ${{ matrix.build }}
         run: python -m cibuildwheel --output-dir wheelhouse
 
       - uses: actions/upload-artifact@v4
