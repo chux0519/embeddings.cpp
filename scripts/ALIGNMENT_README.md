@@ -37,6 +37,19 @@ Run correctness plus CPU performance benchmarks:
 uv run scripts/alignment.py --benchmark --iterations 10 --warmup 2
 ```
 
+For new benchmark reports, prefer the registry-driven unified entry point:
+
+```bash
+uv run scripts/model_bench.py \
+  --models BAAI/bge-m3 \
+  --runners python_cpu embeddings_cpp tei_engine_ort \
+  --quantizations q8_0 \
+  --batch-sizes 1 4 8
+```
+
+`tei_engine_ort` requires a local `text-embeddings-inference` checkout; pass
+`--tei-repo-dir` when it is not adjacent to this repository.
+
 Run the focused BGE-M3 evaluation with isolated Python CPU and
 `embeddings.cpp` worker processes:
 

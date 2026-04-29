@@ -139,6 +139,21 @@ Include CPU performance comparisons:
 uv run scripts/alignment.py --convert-missing --benchmark
 ```
 
+For new model benchmark work, prefer the registry-driven unified runner. It
+uses the shared benchmark protocol and structured model config, and currently
+focuses on Python CPU, TEI engine ORT, and `embeddings.cpp`:
+
+```bash
+uv run scripts/model_bench.py \
+  --models BAAI/bge-m3 \
+  --runners python_cpu embeddings_cpp tei_engine_ort \
+  --quantizations q8_0 \
+  --batch-sizes 1 4 8
+```
+
+`tei_engine_ort` requires a local `text-embeddings-inference` checkout at
+`../text-embeddings-inference` or an explicit `--tei-repo-dir`.
+
 For the focused BGE-M3 single-request and batch validation, including Python
 CPU vs `embeddings.cpp` latency, throughput, RSS, cosine correctness, and an
 optimize-vs-quantize recommendation:

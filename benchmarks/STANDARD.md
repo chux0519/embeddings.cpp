@@ -92,6 +92,21 @@ regression is one such case.
 
 ## Published Reports
 
+The preferred command for new model reports is `scripts/model_bench.py`:
+
+```bash
+uv run scripts/model_bench.py \
+  --models BAAI/bge-m3 \
+  --runners python_cpu embeddings_cpp tei_engine_ort \
+  --quantizations q8_0 \
+  --batch-sizes 1 4 8
+```
+
+`tei_engine_ort` is an engine performance runner and requires a local
+`text-embeddings-inference` checkout through `--tei-repo-dir`. Correctness rows
+in this unified script currently compare `embeddings.cpp` against Python CPU;
+TEI engine ORT is included in the performance table.
+
 Stable reports belong in `benchmarks/<model-slug>.md`. Raw generated outputs
 belong in `scripts/output/` and are not stable documentation.
 
