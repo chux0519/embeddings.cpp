@@ -172,7 +172,9 @@ def compare_vectors(candidate: list[list[float]], reference: list[list[float]]) 
 
 def status_from_metrics(metrics: dict[str, float], threshold: float) -> str:
     min_cos = metrics["min_cos"]
-    return "fail" if math.isnan(min_cos) or min_cos < threshold else "pass"
+    if math.isnan(min_cos):
+        return "invalid"
+    return "outside_tolerance" if min_cos < threshold else "within_tolerance"
 
 
 def format_cell(value: Any) -> str:

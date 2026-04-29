@@ -312,7 +312,8 @@ def convert_missing(args: argparse.Namespace) -> None:
 
 
 def build_analysis(correctness: list[dict[str, Any]], performance: list[dict[str, Any]]) -> dict[str, Any]:
-    correctness_passed = all(row["status"] == "pass" for row in correctness)
+    valid_outputs = all(row["status"] != "invalid" for row in correctness)
+    tolerance_passed = all(row["status"] == "within_tolerance" for row in correctness)
     worst_correctness: dict[str, dict[str, Any]] = {}
     variant_correctness: dict[str, dict[str, dict[str, Any]]] = {}
     for row in correctness:
@@ -411,10 +412,15 @@ def build_analysis(correctness: list[dict[str, Any]], performance: list[dict[str
 
     correctness_counts: dict[str, dict[str, int]] = {}
     for row in correctness:
-        counts = correctness_counts.setdefault(row.get("variant", "embeddings_cpp"), {"pass": 0, "total": 0})
+        counts = correctness_counts.setdefault(
+            row.get("variant", "embeddings_cpp"),
+            {"within_tolerance": 0, "invalid": 0, "total": 0},
+        )
         counts["total"] += 1
-        if row["status"] == "pass":
-            counts["pass"] += 1
+        if row["status"] == "within_tolerance":
+            counts["within_tolerance"] += 1
+        elif row["status"] == "invalid":
+            counts["invalid"] += 1
 
     kquant_summary = []
     for variant in sorted({row["variant"] for row in performance_comparison}):
@@ -425,14 +431,16 @@ def build_analysis(correctness: list[dict[str, Any]], performance: list[dict[str
         correctness_for_variant = variant_correctness.get(variant, {})
         python_correctness = correctness_for_variant.get("python_cpu", {})
         batch_correctness = correctness_for_variant.get("batch_vs_single", {})
-        counts = correctness_counts.get(variant, {"pass": 0, "total": 0})
+        counts = correctness_counts.get(variant, {"within_tolerance": 0, "invalid": 0, "total": 0})
         standard_status = (
-            "pass"
+            "within_tolerance"
             if counts["total"] > 0
-            and counts["pass"] == counts["total"]
-            and python_correctness.get("status") == "pass"
-            and batch_correctness.get("status") == "pass"
-            else "fail"
+            and counts["within_tolerance"] == counts["total"]
+            and python_correctness.get("status") == "within_tolerance"
+            and batch_correctness.get("status") == "within_tolerance"
+            else "invalid"
+            if counts.get("invalid", 0) > 0
+            else "outside_tolerance"
         )
         speed_by_batch = {f"batch_{row['batch_size']}_throughput_ratio": row["throughput_ratio_cpp_over_python"] for row in rows}
         latency_by_batch = {f"batch_{row['batch_size']}_latency_ms": row["cpp_latency_ms_mean"] for row in rows}
@@ -442,7 +450,8 @@ def build_analysis(correctness: list[dict[str, Any]], performance: list[dict[str
                 "quantization": first["quantization"],
                 "repack": first["repack"],
                 "kquant_standard_status": standard_status,
-                "correctness_passed": counts["pass"],
+                "within_tolerance": counts["within_tolerance"],
+                "invalid": counts.get("invalid", 0),
                 "correctness_total": counts["total"],
                 "min_cos_vs_python_cpu": python_correctness.get("min_cos", float("nan")),
                 "correctness_status_vs_python_cpu": python_correctness.get("status", "missing"),
@@ -457,8 +466,13 @@ def build_analysis(correctness: list[dict[str, Any]], performance: list[dict[str
             }
         )
 
-    if not correctness_passed:
-        recommendation = "Fix correctness before performance optimization or quantization."
+    if not valid_outputs:
+        recommendation = "Fix invalid embedding output before performance optimization or quantization."
+    elif not tolerance_passed:
+        recommendation = (
+            "Review the tolerance trade-off before choosing this variant; embeddings were produced, "
+            "but at least one cosine metric is below the configured tolerance."
+        )
     elif slower_batches:
         recommendation = (
             "Optimize embeddings.cpp batch throughput before making quantization the main next step; "
@@ -471,14 +485,18 @@ def build_analysis(correctness: list[dict[str, Any]], performance: list[dict[str
         )
 
     conclusion = (
-        f"Correctness {'passed' if correctness_passed else 'failed'}. "
+        f"Embedding output {'valid' if valid_outputs else 'invalid'}. "
+        f"Tolerance {'met' if tolerance_passed else 'outside configured range'}. "
         f"embeddings.cpp is faster for batch sizes {faster_batches or []} and Python CPU is faster for "
         f"batch sizes {slower_batches or []}. "
         f"embeddings.cpp uses lower peak RSS for batch sizes {lower_peak_rss or []}."
     )
 
     return {
-        "correctness_passed": correctness_passed,
+        "correctness_passed": tolerance_passed,
+        "valid_outputs": valid_outputs,
+        "tolerance_passed": tolerance_passed,
+        "within_tolerance": tolerance_passed,
         "worst_correctness": worst_correctness,
         "performance_comparison": performance_comparison,
         "best_by_batch": best_by_batch,
@@ -487,10 +505,16 @@ def build_analysis(correctness: list[dict[str, Any]], performance: list[dict[str
         "faster_batches": faster_batches,
         "slower_batches": slower_batches,
         "lower_peak_rss_batches": lower_peak_rss,
-        "ready_for_quantization": correctness_passed and not slower_batches,
+        "ready_for_quantization": valid_outputs and tolerance_passed and not slower_batches,
         "conclusion": conclusion,
         "recommendation": recommendation,
     }
+
+
+def threshold_exit_code(correctness: list[dict[str, Any]], fail_on_threshold: bool) -> int:
+    has_invalid_output = any(row["status"] == "invalid" for row in correctness)
+    outside_tolerance = any(row["status"] == "outside_tolerance" for row in correctness)
+    return 1 if has_invalid_output or (fail_on_threshold and outside_tolerance) else 0
 
 
 def write_report(
@@ -525,17 +549,21 @@ def write_report(
                 f"batch-vs-single min cosine: {metadata['batch_min_cos']}; "
                 f"quantized batch-vs-single min cosine: {metadata['quantized_batch_min_cos']}.\n\n"
             )
+            f.write(
+                "These thresholds are report tolerances. The command exits non-zero only when "
+                "`--fail-on-threshold` is set.\n\n"
+            )
         f.write("## Conclusion\n\n")
         f.write(f"{analysis['conclusion']}\n\n")
         f.write(f"Recommendation: {analysis['recommendation']}\n\n")
         f.write("## Kquant / Repack Summary\n\n")
         f.write(
-            "| Variant | Kquant Standard | Correctness | Min Cos vs Python | Batch vs Single Min Cos | "
+            "| Variant | Tolerance | Correctness | Min Cos vs Python | Batch vs Single Min Cos | "
             "B1 C++/Python TPS | B4 C++/Python TPS | B8 C++/Python TPS | Peak RSS MB | RSS Delta MB | Load RSS MB |\n"
         )
         f.write("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
         for row in analysis["kquant_summary"]:
-            correctness_ratio = f"{row['correctness_passed']}/{row['correctness_total']}"
+            correctness_ratio = f"{row['within_tolerance']}/{row['correctness_total']}"
             f.write(
                 f"| {row['variant']} | {row['kquant_standard_status']} | {correctness_ratio} | "
                 f"{format_cell(row['min_cos_vs_python_cpu'])} | "
@@ -549,7 +577,7 @@ def write_report(
             )
         f.write("\n")
         f.write("## Correctness\n\n")
-        f.write("| Variant | Case | Comparison | Status | Min Cos | Mean Cos | MSE | Max Abs |\n")
+        f.write("| Variant | Case | Comparison | Tolerance | Min Cos | Mean Cos | MSE | Max Abs |\n")
         f.write("|---|---|---|---|---:|---:|---:|---:|\n")
         for row in correctness:
             f.write(
@@ -558,7 +586,7 @@ def write_report(
                 f"{format_cell(row['mean_cos'])} | {format_cell(row['mse'])} | {format_cell(row['max_abs'])} |\n"
             )
         f.write("\n## Correctness Summary\n\n")
-        f.write("| Comparison | Variant | Worst Case | Status | Min Cos |\n")
+        f.write("| Comparison | Variant | Worst Case | Tolerance | Min Cos |\n")
         f.write("|---|---|---|---|---:|\n")
         for comparison, row in analysis["worst_correctness"].items():
             f.write(
@@ -654,6 +682,11 @@ def parse_args() -> argparse.Namespace:
         help="Batch-vs-single min cosine threshold for quantized GGUF variants. Defaults to --batch-min-cos.",
     )
     parser.add_argument("--seed", type=int, default=20260429)
+    parser.add_argument(
+        "--fail-on-threshold",
+        action="store_true",
+        help="Exit with status 1 when any cosine metric is below the configured tolerance.",
+    )
     parser.add_argument("--torch-threads", type=int, default=max(1, min(8, os.cpu_count() or 1)))
     parser.add_argument("--cpp-threads", type=int)
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
@@ -770,13 +803,14 @@ def main() -> int:
         "min_cos": args.min_cos,
         "batch_min_cos": args.batch_min_cos,
         "quantized_batch_min_cos": args.quantized_batch_min_cos,
+        "fail_on_threshold": args.fail_on_threshold,
     }
     json_path, md_path = write_report(correctness, performance, analysis, args.output_dir)
     print(f"Wrote {json_path}")
     print(f"Wrote {md_path}")
     print(analysis["conclusion"])
     print(f"Recommendation: {analysis['recommendation']}")
-    return 1 if any(row["status"] != "pass" for row in correctness) else 0
+    return threshold_exit_code(correctness, args.fail_on_threshold)
 
 
 if __name__ == "__main__":

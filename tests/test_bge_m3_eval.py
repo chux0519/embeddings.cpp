@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts.bge_m3_eval import apply_default_thresholds, build_analysis, build_cases, compare, status
+from scripts.bge_m3_eval import threshold_exit_code
 
 
 def test_compare_reports_cosine_and_distance_metrics():
@@ -17,7 +18,7 @@ def test_compare_reports_cosine_and_distance_metrics():
     assert metrics["mean_cos"] == 0.5
     assert metrics["mse"] == 0.5
     assert metrics["max_abs"] == 1.0
-    assert status(metrics, 0.9) == "fail"
+    assert status(metrics, 0.9) == "outside_tolerance"
 
 
 def test_build_cases_uses_seeded_realistic_text_batches():
@@ -61,20 +62,33 @@ def test_explicit_thresholds_are_preserved_for_quantization_sweeps():
     assert args.quantized_batch_min_cos == 0.99
 
 
+def test_threshold_failures_are_report_only_by_default():
+    correctness = [{"status": "outside_tolerance"}]
+
+    assert threshold_exit_code(correctness, fail_on_threshold=False) == 0
+    assert threshold_exit_code(correctness, fail_on_threshold=True) == 1
+
+
+def test_invalid_outputs_always_fail_exit_code():
+    correctness = [{"status": "invalid"}]
+
+    assert threshold_exit_code(correctness, fail_on_threshold=False) == 1
+
+
 def test_build_analysis_compares_isolated_runner_performance():
     correctness = [
         {
             "case": "single_en",
             "variant": "fp16",
             "comparison": "embeddings_cpp_batch_vs_python_cpu",
-            "status": "pass",
+            "status": "within_tolerance",
             "min_cos": 0.9995,
         },
         {
             "case": "mixed_batch_4",
             "variant": "fp16",
             "comparison": "embeddings_cpp_batch_vs_python_cpu",
-            "status": "pass",
+            "status": "within_tolerance",
             "min_cos": 0.9991,
         },
     ]
@@ -105,7 +119,7 @@ def test_build_analysis_compares_isolated_runner_performance():
     assert analysis["worst_correctness"]["embeddings_cpp_batch_vs_python_cpu"] == {
         "case": "mixed_batch_4",
         "variant": "fp16",
-        "status": "pass",
+        "status": "within_tolerance",
         "min_cos": 0.9991,
     }
     comparison = analysis["performance_comparison"][0]
@@ -119,7 +133,7 @@ def test_build_analysis_compares_isolated_runner_performance():
     assert comparison["rss_delta_mb_cpp_minus_python"] == -700.0
     assert comparison["load_rss_delta_mb_cpp_minus_python"] == -600.0
     assert comparison["min_cos_vs_python_cpu"] == 0.9991
-    assert analysis["correctness_passed"] is True
+    assert analysis["within_tolerance"] is True
     assert analysis["faster_batches"] == [4]
     assert analysis["slower_batches"] == []
     assert analysis["lower_peak_rss_batches"] == [4]
@@ -133,7 +147,7 @@ def test_build_analysis_recommends_batch_optimization_when_python_cpu_wins_batch
             "case": "mixed_batch_4",
             "variant": "fp16",
             "comparison": "embeddings_cpp_batch_vs_python_cpu",
-            "status": "pass",
+            "status": "within_tolerance",
             "min_cos": 0.9991,
         }
     ]
@@ -159,7 +173,7 @@ def test_build_analysis_recommends_batch_optimization_when_python_cpu_wins_batch
 
     analysis = build_analysis(correctness, performance)
 
-    assert analysis["correctness_passed"] is True
+    assert analysis["within_tolerance"] is True
     assert analysis["faster_batches"] == []
     assert analysis["slower_batches"] == [8]
     assert analysis["lower_peak_rss_batches"] == [8]
@@ -173,14 +187,14 @@ def test_build_analysis_tracks_best_quantized_repack_variant_by_batch():
             "case": "mixed_batch_4",
             "variant": "q8_0+repack_off",
             "comparison": "q8_0+repack_off_batch_vs_python_cpu",
-            "status": "pass",
+            "status": "within_tolerance",
             "min_cos": 0.999,
         },
         {
             "case": "mixed_batch_4",
             "variant": "q8_0+repack_on",
             "comparison": "q8_0+repack_on_batch_vs_python_cpu",
-            "status": "pass",
+            "status": "within_tolerance",
             "min_cos": 0.999,
         },
     ]
@@ -227,8 +241,8 @@ def test_build_analysis_tracks_best_quantized_repack_variant_by_batch():
     assert off_summary["variant"] == "q8_0+repack_off"
     assert off_summary["quantization"] == "q8_0"
     assert off_summary["repack"] == "off"
-    assert off_summary["kquant_standard_status"] == "fail"
-    assert off_summary["correctness_passed"] == 1
+    assert off_summary["kquant_standard_status"] == "outside_tolerance"
+    assert off_summary["within_tolerance"] == 1
     assert off_summary["correctness_total"] == 1
     assert off_summary["min_cos_vs_python_cpu"] == 0.999
     assert math.isnan(off_summary["min_cos_batch_vs_single"])
@@ -240,24 +254,26 @@ def test_build_analysis_tracks_best_quantized_repack_variant_by_batch():
     assert off_summary["batch_4_latency_ms"] == 120.0
 
     assert on_summary["variant"] == "q8_0+repack_on"
-    assert on_summary["kquant_standard_status"] == "fail"
+    assert on_summary["kquant_standard_status"] == "outside_tolerance"
     assert on_summary["peak_rss_mb"] == 760.0
     assert on_summary["batch_4_throughput_ratio"] == 50.0 / 40.0
 
 
-def test_build_analysis_prioritizes_correctness_failures():
+def test_build_analysis_treats_cosine_drift_as_tolerance_metric():
     correctness = [
         {
             "case": "single_en",
             "variant": "fp16",
             "comparison": "embeddings_cpp_batch_vs_python_cpu",
-            "status": "fail",
+            "status": "outside_tolerance",
             "min_cos": 0.9,
         }
     ]
 
     analysis = build_analysis(correctness, [])
 
-    assert analysis["correctness_passed"] is False
+    assert analysis["within_tolerance"] is False
+    assert analysis["valid_outputs"] is True
     assert analysis["ready_for_quantization"] is False
-    assert analysis["recommendation"] == "Fix correctness before performance optimization or quantization."
+    assert "below the configured tolerance" in analysis["recommendation"]
+    assert "Tolerance outside configured range" in analysis["conclusion"]

@@ -147,6 +147,21 @@ optimize-vs-quantize recommendation:
 uv run scripts/bge_m3_eval.py --convert-missing --batch-sizes 1 4 8
 ```
 
+By default the cosine thresholds are taken from the model registry and are used
+as report tolerances, not process-failure gates. To explore looser product
+tolerances, pass them explicitly:
+
+```bash
+uv run scripts/bge_m3_eval.py \
+  --batch-sizes 1 4 8 \
+  --min-cos 0.95 \
+  --batch-min-cos 0.95 \
+  --quantized-batch-min-cos 0.95
+```
+
+For CI-style checks that should fail on tolerance misses, add
+`--fail-on-threshold`.
+
 To produce a Snowflake-style BGE-M3 optimization table with Python CPU as the
 correctness and speed baseline, sweep k-quant variants and CPU repack modes:
 
