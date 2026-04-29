@@ -28,7 +28,7 @@ def test_default_quantizations_follow_registry_artifact_or_source_dtype():
     bge = get_model_spec("BAAI/bge-m3")
     snowflake = get_model_spec("Snowflake/snowflake-arctic-embed-m-v2.0")
 
-    assert default_quantizations(bge) == ["fp16"]
+    assert default_quantizations(bge) == ["q8_0"]
     assert default_quantizations(snowflake) == ["q4_k_mlp_q8_attn"]
 
 

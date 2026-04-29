@@ -74,6 +74,10 @@ jobs:
 
           spec = get_model_spec(os.environ["MODEL_ID"])
           repo_id = os.environ["HF_REPO_ID_OVERRIDE"] or spec.hf_repo_id
+          if not repo_id:
+              raise SystemExit(f"No hf_repo_id configured for {spec.model_id}; pass hf_repo_id or update registry")
+          if not spec.artifact_file:
+              raise SystemExit(f"No artifact_file configured for {spec.model_id}; update registry")
           print(f"model_id={spec.model_id}")
           print(f"slug={spec.slug}")
           print(f"hf_repo_id={repo_id}")
@@ -130,7 +134,6 @@ jobs:
           uv run scripts/render_hf_readme.py \
             --model-id "${{ steps.meta.outputs.model_id }}" \
             --gguf "models/${{ steps.meta.outputs.artifact_file }}" \
-            --template docs/huggingface/snowflake-arctic-embed-m-v2.0-gguf/README.md \
             --output hf-upload/README.md | tee gguf.sha256
 
       - name: Upload to Hugging Face

@@ -25,12 +25,24 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Render a Hugging Face README from the registry model card template.")
     parser.add_argument("--model-id", required=True)
     parser.add_argument("--gguf", type=Path, required=True)
-    parser.add_argument("--template", type=Path, required=True)
+    parser.add_argument(
+        "--template",
+        type=Path,
+        help="Template path. Defaults to docs/huggingface/<registry-slug>-gguf/README.md.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
     spec = get_model_spec(args.model_id)
-    readme = args.template.read_text(encoding="utf-8")
+    template = args.template or ROOT / "docs" / "huggingface" / f"{spec.slug}-gguf" / "README.md"
+    if not template.exists():
+        raise FileNotFoundError(
+            f"Hugging Face README template not found for {spec.model_id}: {template}. "
+            "Add docs/huggingface/<slug>-gguf/README.md or pass --template."
+        )
+    if not spec.hf_repo_id or not spec.artifact_file:
+        raise ValueError(f"No published HF artifact metadata is configured for {spec.model_id}.")
+    readme = template.read_text(encoding="utf-8")
     size_mb = args.gguf.stat().st_size / 1024 / 1024
     sha = sha256_file(args.gguf)
 

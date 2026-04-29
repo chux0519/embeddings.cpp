@@ -87,10 +87,13 @@ Install embeddings.cpp:
 pip install "embeddings-cpp[hub]"
 ```
 
-Load the published Snowflake GGUF directly from Hugging Face:
+Load published GGUF artifacts directly from Hugging Face:
 
 ```python
 from embeddings_cpp import load
+
+model = load("BAAI/bge-m3")
+vectors = model.batch_encode(["hello world", "你好，世界"])
 
 model = load("Snowflake/snowflake-arctic-embed-m-v2.0")
 vectors = model.batch_encode(["hello world", "你好，世界"])

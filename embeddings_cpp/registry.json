@@ -2,15 +2,18 @@
   "BAAI/bge-m3": {
     "model_id": "BAAI/bge-m3",
     "slug": "bge-m3",
-    "hf_repo_id": null,
-    "artifact_file": null,
+    "hf_repo_id": "chux0519/bge-m3-gguf-embeddings-cpp",
+    "artifact_file": "bge-m3.q8_0.gguf",
     "source_dtype": "f16",
     "pooling": "cls",
     "embedding_dim": 1024,
-    "runtime_env": {},
+    "runtime_env": {
+      "EMBEDDINGS_CPP_CPU_REPACK": "1"
+    },
     "cmake_flags": [
       "-DCMAKE_BUILD_TYPE=Release",
       "-DEMBEDDINGS_CPP_ENABLE_PYBIND=ON",
+      "-DGGML_CPU_REPACK=ON",
       "-DGGML_BLAS=OFF",
       "-DGGML_OPENMP=OFF",
       "-DGGML_NATIVE=OFF",
@@ -18,7 +21,13 @@
       "-DGGML_VULKAN=OFF",
       "-DGGML_METAL=OFF"
     ],
-    "quantization_steps": [],
+    "quantization_steps": [
+      {
+        "name": "q8_0",
+        "quant": "q8_0",
+        "output_file": "bge-m3.q8_0.gguf"
+      }
+    ],
     "correctness": {
       "python_min_cos": 0.999,
       "batch_min_cos": 0.999999
