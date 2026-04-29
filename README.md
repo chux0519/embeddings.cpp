@@ -139,6 +139,30 @@ Include CPU performance comparisons:
 uv run scripts/alignment.py --convert-missing --benchmark
 ```
 
+For the focused BGE-M3 single-request and batch validation, including Python
+CPU vs `embeddings.cpp` latency, throughput, RSS, cosine correctness, and an
+optimize-vs-quantize recommendation:
+
+```bash
+uv run scripts/bge_m3_eval.py --convert-missing --batch-sizes 1 4 8
+```
+
+To produce a Snowflake-style BGE-M3 optimization table with Python CPU as the
+correctness and speed baseline, sweep k-quant variants and CPU repack modes:
+
+```bash
+cmake --build build --target quantize
+uv run scripts/bge_m3_eval.py \
+  --convert-missing \
+  --quantize-missing \
+  --quantizations fp16 q8_0 q6_k q4_k \
+  --repack-modes off on \
+  --batch-sizes 1 4 8
+```
+
+The generated Markdown report includes correctness, raw performance,
+optimization-sweep, and best-variant-by-batch tables under `scripts/output/`.
+
 The benchmark report compares Python `transformers` CPU, `embeddings.cpp`, and
 TEI when enabled for the model. For Snowflake on CPU, the only cross-implementation
 format all three runners share is `fp32`, so the README keeps the fair

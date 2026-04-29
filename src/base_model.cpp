@@ -216,11 +216,14 @@ void BaseModel::LoadModelImpl(const std::string &gguf_model) {
             : (ggml_backend_is_cpu(ctx.backend)
                    ? ggml_backend_cpu_buffer_type()
                    : ggml_backend_get_default_buffer_type(ctx.backend));
-    size_t buffer_size = 0;
+    const size_t weight_alignment = ggml_backend_buft_get_alignment(weight_buft);
+    size_t buffer_size = weight_alignment;
     for (int i = 0; i < n_tensors; ++i) {
       struct ggml_tensor *cur =
           ggml_get_tensor(ctx.ctx_data, gguf_get_tensor_name(ctx_gguf, i));
-      buffer_size += ggml_backend_buft_get_alloc_size(weight_buft, cur);
+      buffer_size +=
+          GGML_PAD(ggml_backend_buft_get_alloc_size(weight_buft, cur),
+                   weight_alignment);
     }
     fprintf(stderr, "%s: model size = %.2f MB / num tensors = %d\n", __func__,
             buffer_size / (1024.0 * 1024.0), n_tensors);

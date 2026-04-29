@@ -24,6 +24,7 @@ __pycache__/
 *.pyd
 
 # Local test, coverage, and profiling output
+scripts/output/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

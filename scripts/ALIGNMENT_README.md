@@ -37,6 +37,26 @@ Run correctness plus CPU performance benchmarks:
 uv run scripts/alignment.py --benchmark --iterations 10 --warmup 2
 ```
 
+Run the focused BGE-M3 evaluation with isolated Python CPU and
+`embeddings.cpp` worker processes:
+
+```bash
+uv run scripts/bge_m3_eval.py \
+  --convert-missing \
+  --batch-sizes 1 4 8 \
+  --iterations 5 \
+  --warmup 1
+```
+
+This writes `scripts/output/bge_m3_eval_*.json` and `.md` reports with:
+
+- Python CPU vs `embeddings.cpp` cosine correctness
+- `embeddings.cpp` batch-vs-single cosine correctness
+- single-request (`batch=1`) and batch latency/throughput
+- isolated load RSS and benchmark peak RSS for each runner
+- a conclusion that says whether to optimize batch throughput first or start
+  quantization next
+
 Run Snowflake with TEI as an additional comparator:
 
 ```bash

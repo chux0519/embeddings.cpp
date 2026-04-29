@@ -11,6 +11,14 @@ sys.path.insert(0, str(ROOT))
 
 from embeddings_cpp.registry import get_model_spec
 
+
+def default_quantizations(spec) -> list[str]:
+    if spec.artifact_file:
+        return [spec.artifact_file.removesuffix(".gguf").removeprefix(f"{spec.slug}.")]
+    source_quantization = {"f16": "fp16", "f32": "fp32"}.get(spec.source_dtype, spec.source_dtype)
+    return [source_quantization]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run registry-driven embeddings.cpp correctness checks.")
     parser.add_argument("--model-id", default="Snowflake/snowflake-arctic-embed-m-v2.0")
@@ -23,7 +31,10 @@ def main() -> int:
     args = parser.parse_args()
 
     spec = get_model_spec(args.model_id)
-    quantizations = args.quantizations or [spec.artifact_file.removesuffix(".gguf").removeprefix(f"{spec.slug}.")]
+    if args.quantizations:
+        quantizations = args.quantizations
+    else:
+        quantizations = default_quantizations(spec)
     min_cos = str(spec.correctness.get("python_min_cos", 0.999))
     batch_min_cos = str(spec.correctness.get("batch_min_cos", 0.999999))
 

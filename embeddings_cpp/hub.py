@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 from typing import Sequence
 
-from embeddings_cpp import create_embedding
 from embeddings_cpp.registry import ModelSpec, get_model_spec, pooling_name_to_enum
 
 
@@ -33,6 +32,11 @@ class LoadedEmbedding:
 
 
 def _download_from_hf(spec: ModelSpec, revision: str | None = None, cache_dir: str | Path | None = None) -> str:
+    if not spec.hf_repo_id or not spec.artifact_file:
+        raise ValueError(
+            f"No published GGUF artifact is configured for {spec.model_id}; "
+            "pass gguf_path to load a local converted model."
+        )
     try:
         from huggingface_hub import hf_hub_download
     except ImportError as exc:
@@ -60,4 +64,7 @@ def load(
             os.environ.setdefault(key, value)
 
     resolved_path = str(gguf_path) if gguf_path is not None else _download_from_hf(spec, revision, cache_dir)
+
+    from embeddings_cpp import create_embedding
+
     return LoadedEmbedding(create_embedding(resolved_path), spec, resolved_path)

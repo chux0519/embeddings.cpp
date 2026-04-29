@@ -1,4 +1,37 @@
 {
+  "BAAI/bge-m3": {
+    "model_id": "BAAI/bge-m3",
+    "slug": "bge-m3",
+    "hf_repo_id": null,
+    "artifact_file": null,
+    "source_dtype": "f16",
+    "pooling": "cls",
+    "embedding_dim": 1024,
+    "runtime_env": {},
+    "cmake_flags": [
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DEMBEDDINGS_CPP_ENABLE_PYBIND=ON",
+      "-DGGML_BLAS=OFF",
+      "-DGGML_OPENMP=OFF",
+      "-DGGML_NATIVE=OFF",
+      "-DGGML_CUDA=OFF",
+      "-DGGML_VULKAN=OFF",
+      "-DGGML_METAL=OFF"
+    ],
+    "quantization_steps": [],
+    "correctness": {
+      "python_min_cos": 0.999,
+      "batch_min_cos": 0.999999
+    },
+    "benchmark": {
+      "batch_sizes": [1, 4, 8],
+      "default_threads": null,
+      "max_batch_tokens": 8192
+    }
+  },
+  "bge-m3": {
+    "alias_for": "BAAI/bge-m3"
+  },
   "Snowflake/snowflake-arctic-embed-m-v2.0": {
     "model_id": "Snowflake/snowflake-arctic-embed-m-v2.0",
     "slug": "snowflake-arctic-embed-m-v2.0",

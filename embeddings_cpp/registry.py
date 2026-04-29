@@ -10,8 +10,8 @@ from typing import Any
 class ModelSpec:
     model_id: str
     slug: str
-    hf_repo_id: str
-    artifact_file: str
+    hf_repo_id: str | None
+    artifact_file: str | None
     source_dtype: str
     pooling: str
     embedding_dim: int
@@ -45,8 +45,8 @@ def get_model_spec(model_id: str) -> ModelSpec:
     return ModelSpec(
         model_id=entry["model_id"],
         slug=entry["slug"],
-        hf_repo_id=entry["hf_repo_id"],
-        artifact_file=entry["artifact_file"],
+        hf_repo_id=entry.get("hf_repo_id"),
+        artifact_file=entry.get("artifact_file"),
         source_dtype=entry.get("source_dtype", "f16"),
         pooling=entry.get("pooling", "mean"),
         embedding_dim=int(entry["embedding_dim"]),

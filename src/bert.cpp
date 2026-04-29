@@ -8,14 +8,64 @@
 #ifdef GGML_USE_VULKAN
 #include "ggml-vulkan.h"
 #endif
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <utility>
+#include <vector>
 
 #include "tokenizer.h"
 #include "utils.h"
 
 namespace embeddings {
+namespace {
+
+bool use_bert_flash_attn(bool quantized_model) {
+  const char *env = std::getenv("EMBEDDINGS_CPP_BERT_FLASH_ATTN");
+  if (!env) {
+    return quantized_model;
+  }
+  return std::atoi(env) != 0;
+}
+
+bool use_bert_quantized_sequential_batch() {
+  const char *env = std::getenv("EMBEDDINGS_CPP_BERT_QUANT_BATCH_SEQUENTIAL");
+  if (!env) {
+    return false;
+  }
+  return std::atoi(env) != 0;
+}
+
+}  // namespace
 
 BertModel::BertModel(const std::string &gguf_model) : BaseModel(gguf_model) {}
+
+std::vector<std::vector<float>> BertModel::BatchForward(
+    const std::vector<TokenizedInput> &batch, bool normalize,
+    PoolingMethod pooling_method) {
+  if (batch.size() > 1 && pooling_method == PoolingMethod::CLS &&
+      use_bert_quantized_sequential_batch() &&
+      model_ftype != GGML_TYPE_F16 && model_ftype != GGML_TYPE_F32) {
+    std::vector<std::vector<float>> result;
+    result.reserve(batch.size());
+    for (const auto &enc : batch) {
+      TokenizedInput trimmed = enc;
+      if (trimmed.no_pad_len > 0 && trimmed.no_pad_len < trimmed.ids.size()) {
+        trimmed.ids.resize(trimmed.no_pad_len);
+        trimmed.attention_mask.resize(trimmed.no_pad_len);
+      }
+      std::vector<TokenizedInput> single = {std::move(trimmed)};
+      auto graph = CommonBatchForwardSetup(single, normalize, pooling_method);
+      auto rows = ExtractResults(graph, 1, hparams->hidden_size);
+      if (!rows.empty()) {
+        result.push_back(std::move(rows[0]));
+      }
+    }
+    return result;
+  }
+
+  return BaseModel::BatchForward(batch, normalize, pooling_method);
+}
 
 // NEW: Implement LoadHyperparameters, containing only model-specific loading
 // logic
@@ -105,6 +155,9 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<TokenizedInput> &bat
   const int n_head = bert_hparams->num_attention_heads;
   const float layer_norm_eps = bert_hparams->layer_norm_eps;
   const int d_head = n_embd / n_head;  // E = D * H
+  const bool quantized_model =
+      model_ftype != GGML_TYPE_F16 && model_ftype != GGML_TYPE_F32;
+  const bool flash_attn = use_bert_flash_attn(quantized_model);
 
   int n_batch_size = batch.size();           // B
   int cur_batch_size = batch[0].ids.size();  // L
@@ -128,8 +181,17 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<TokenizedInput> &bat
       ctx.compute_ctx, GGML_TYPE_I32, cur_batch_size * n_batch_size);
   struct ggml_tensor *pad_mask = ggml_new_tensor_4d(
       ctx.compute_ctx, GGML_TYPE_F32, 1, cur_batch_size, 1, n_batch_size);
+  struct ggml_tensor *flash_attn_mask =
+      flash_attn
+          ? ggml_new_tensor_4d(ctx.compute_ctx, GGML_TYPE_F16, cur_batch_size,
+                               cur_batch_size, 1, n_batch_size)
+          : nullptr;
   struct ggml_tensor *positions = ggml_new_tensor_1d(
       ctx.compute_ctx, GGML_TYPE_I32, cur_batch_size * n_batch_size);
+  struct ggml_tensor *cls_position_ids =
+      pooling_method == PoolingMethod::CLS
+          ? ggml_new_tensor_1d(ctx.compute_ctx, GGML_TYPE_I32, n_batch_size)
+          : nullptr;
   struct ggml_tensor *pooler =
       ggml_new_tensor_3d(ctx.compute_ctx, GGML_TYPE_F32, cur_batch_size, 1,
                          n_batch_size);  // the avg pooler
@@ -142,11 +204,25 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<TokenizedInput> &bat
   int32_t *token_layer_data = (int32_t *)malloc(ggml_nbytes(token_layer));
   int32_t *token_types_data = (int32_t *)malloc(ggml_nbytes(token_types));
   float *pad_mask_data = (float *)malloc(ggml_nbytes(pad_mask));
+  std::vector<ggml_fp16_t> flash_attn_mask_data;
+  if (flash_attn_mask) {
+    flash_attn_mask_data.assign(cur_batch_size * cur_batch_size * n_batch_size,
+                                ggml_fp32_to_fp16(-INFINITY));
+  }
   int32_t *pos_data = (int32_t *)malloc(ggml_nbytes(positions));
+  int32_t *cls_position_data =
+      cls_position_ids ? (int32_t *)malloc(ggml_nbytes(cls_position_ids))
+                       : nullptr;
   float *pooler_data = (float *)malloc(ggml_nbytes(pooler));
   float m1 = -1.0f;
 
   for (int ba = 0; ba < n_batch_size; ba++) {
+    if (cls_position_data) {
+      cls_position_data[ba] =
+          !batch[ba].attention_mask.empty() && batch[ba].attention_mask[0]
+              ? ba * cur_batch_size
+              : -1;
+    }
     for (int i = 0; i < cur_batch_size; i++) {
       int cur_len = batch[ba].ids.size();
       if (cur_len != cur_batch_size) {
@@ -180,6 +256,20 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<TokenizedInput> &bat
         pos_data[ba * cur_batch_size + i] = i;
       }
     }
+    if (flash_attn_mask) {
+      for (int q = 0; q < cur_batch_size; ++q) {
+        if (!batch[ba].attention_mask[q]) {
+          continue;
+        }
+        for (int k = 0; k < cur_batch_size; ++k) {
+          if (batch[ba].attention_mask[k]) {
+            const int offset = ba * cur_batch_size * cur_batch_size +
+                               q * cur_batch_size + k;
+            flash_attn_mask_data[offset] = ggml_fp32_to_fp16(0.0f);
+          }
+        }
+      }
+    }
   }
 
   ggml_backend_tensor_set(token_layer, token_layer_data, 0,
@@ -187,7 +277,15 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<TokenizedInput> &bat
   ggml_backend_tensor_set(token_types, token_types_data, 0,
                           ggml_nbytes(token_types));
   ggml_backend_tensor_set(pad_mask, pad_mask_data, 0, ggml_nbytes(pad_mask));
+  if (flash_attn_mask) {
+    ggml_backend_tensor_set(flash_attn_mask, flash_attn_mask_data.data(), 0,
+                            ggml_nbytes(flash_attn_mask));
+  }
   ggml_backend_tensor_set(positions, pos_data, 0, ggml_nbytes(positions));
+  if (cls_position_ids) {
+    ggml_backend_tensor_set(cls_position_ids, cls_position_data, 0,
+                            ggml_nbytes(cls_position_ids));
+  }
   ggml_backend_tensor_set(pooler, pooler_data, 0, ggml_nbytes(pooler));
   ggml_backend_tensor_set(minus_one, &m1, 0, sizeof(m1));
 
@@ -195,6 +293,7 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<TokenizedInput> &bat
   free(token_types_data);
   free(pad_mask_data);
   free(pos_data);
+  free(cls_position_data);
   free(pooler_data);
 
   // Create a `ggml_cgraph` for forward operation
@@ -265,21 +364,31 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<TokenizedInput> &bat
                    layers[il].v_b);  // [E, L, B]
       V = ggml_reshape_4d(ctx_cgraph, V, d_head, n_head, cur_batch_size,
                           n_batch_size);  // [D, H, L, B]
-      V = ggml_cont(ctx_cgraph,
-                    ggml_permute(ctx_cgraph, V, 1, 2, 0, 3));  // [H, L, D, B]
 
-      // scaled attention
-      struct ggml_tensor *KQ =
-          ggml_mul_mat(ctx_cgraph, K, Q);  // -> [L, L, H, B]
-      KQ = ggml_scale_inplace(ctx_cgraph, KQ, 1.0f / sqrt((float)d_head));
-      KQ = ggml_add(ctx_cgraph, KQ, attn_mask);
-      KQ = ggml_soft_max(ctx_cgraph, KQ);
+      struct ggml_tensor *KQV = nullptr;
+      if (flash_attn) {
+        V = ggml_cont(ctx_cgraph,
+                      ggml_permute(ctx_cgraph, V, 0, 2, 1, 3));  // [D, L, H, B]
+        KQV = ggml_flash_attn_ext(ctx_cgraph, Q, K, V, flash_attn_mask,
+                                  1.0f / sqrt((float)d_head), 0.0f, 0.0f);
+        ggml_flash_attn_ext_set_prec(KQV, GGML_PREC_F32);
+        KQV = ggml_cont(ctx_cgraph, KQV);  // [D, L, H, B]
+      } else {
+        V = ggml_cont(ctx_cgraph,
+                      ggml_permute(ctx_cgraph, V, 1, 2, 0, 3));  // [H, L, D, B]
 
-      // get weighted values
-      struct ggml_tensor *KQV =
-          ggml_mul_mat(ctx_cgraph, V, KQ);  // -> [D, L, H, B]
-      KQV = ggml_cont(ctx_cgraph, ggml_permute(ctx_cgraph, KQV, 0, 2, 1,
-                                               3));  // -> [D, H, L, B]
+        // scaled attention
+        struct ggml_tensor *KQ =
+            ggml_mul_mat(ctx_cgraph, K, Q);  // -> [L, L, H, B]
+        KQ = ggml_scale_inplace(ctx_cgraph, KQ, 1.0f / sqrt((float)d_head));
+        KQ = ggml_add(ctx_cgraph, KQ, attn_mask);
+        KQ = ggml_soft_max(ctx_cgraph, KQ);
+
+        // get weighted values
+        KQV = ggml_mul_mat(ctx_cgraph, V, KQ);  // -> [D, L, H, B]
+        KQV = ggml_cont(ctx_cgraph, ggml_permute(ctx_cgraph, KQV, 0, 2, 1,
+                                                 3));  // -> [D, H, L, B]
+      }
 
       // copy back to input (E = D * H)
       cur = ggml_reshape_3d(ctx_cgraph, KQV, n_embd, cur_batch_size,
@@ -321,10 +430,16 @@ struct ggml_cgraph *BertModel::BuildGraph(const std::vector<TokenizedInput> &bat
   }
 
   // pooler
-  inpL = ggml_mul_mat(ctx_cgraph,
-                      ggml_cont(ctx_cgraph, ggml_transpose(ctx_cgraph, inpL)),
-                      pooler);  // [ 1, E, B ]
-  inpL = ggml_reshape_2d(ctx_cgraph, inpL, n_embd, n_batch_size);  // [E, B]
+  if (pooling_method == PoolingMethod::CLS) {
+    auto *flat = ggml_reshape_2d(ctx_cgraph, ggml_cont(ctx_cgraph, inpL),
+                                 n_embd, cur_batch_size * n_batch_size);
+    inpL = ggml_gte_cls_pool(ctx_cgraph, flat, cls_position_ids);  // [E, B]
+  } else {
+    inpL = ggml_mul_mat(ctx_cgraph,
+                        ggml_cont(ctx_cgraph, ggml_transpose(ctx_cgraph, inpL)),
+                        pooler);  // [ 1, E, B ]
+    inpL = ggml_reshape_2d(ctx_cgraph, inpL, n_embd, n_batch_size);  // [E, B]
+  }
 
   // l2 normalize
   if (normalize) {

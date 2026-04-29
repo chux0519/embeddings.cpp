@@ -46,6 +46,9 @@ struct EncoderBlock {
 class BertModel : public BaseModel {
  public:
   BertModel(const std::string &gguf_model);
+  std::vector<std::vector<float>> BatchForward(
+      const std::vector<TokenizedInput> &batch, bool normalize = true,
+      PoolingMethod pooling_method = PoolingMethod::MEAN) override;
 
  protected:
   struct ggml_cgraph *BuildGraph(
