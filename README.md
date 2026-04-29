@@ -19,7 +19,7 @@ The following models have been tested and verified:
 - Snowflake/snowflake-arctic-embed-m-v2.0
 - sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 
-The C++ implementation is checked against Python `transformers` CPU output. Models also supported by Hugging Face `text-embeddings-inference` can be checked against TEI as a third implementation. For repeatable correctness and performance runs, see `scripts/ALIGNMENT_README.md`.
+The C++ implementation is checked against Python `transformers` CPU output. Models also supported by Hugging Face `text-embeddings-inference` can include TEI engine ORT as a performance comparator. For repeatable correctness and performance runs, use `scripts/model_bench.py` and the shared benchmark protocol in `benchmarks/STANDARD.md`.
 
 ## Model Preparation
 
