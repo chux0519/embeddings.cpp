@@ -41,6 +41,19 @@ def _platform_cmake_args() -> list[str]:
     ]
 
 
+def _cmake_build_jobs() -> str | None:
+    jobs = os.environ.get("EMBEDDINGS_CPP_BUILD_JOBS")
+    if jobs is not None:
+        jobs = jobs.strip()
+        return jobs or None
+    if _is_riscv64_target():
+        # QEMU user-mode builds can get slower or appear stuck when Ninja fans
+        # out across all hosted-runner cores. Keep RVV enabled, but use a small
+        # parallelism cap for the emulated wheel build.
+        return "2"
+    return None
+
+
 # A CMakeExtension needs a sourcedir instead of a file list.
 # The name must be the _single_ output extension from the CMake build.
 # If you need multiple extensions, see scikit-build.
@@ -145,8 +158,10 @@ class CMakeBuild(build_ext):
         #         # CMake 3.12+ only.
         #         build_args += [f"-j{self.parallel}"]
 
-        # Compile in parallel by default
-        build_args += [f"-j"]
+        # Compile in parallel by default. RISC-V cibuildwheel uses QEMU, where
+        # unconstrained parallelism can be counterproductive.
+        build_jobs = _cmake_build_jobs()
+        build_args += [f"-j{build_jobs}" if build_jobs else "-j"]
 
         build_temp = os.path.abspath(os.path.join(self.build_temp, ext.name))
         os.makedirs(build_temp, exist_ok=True)
