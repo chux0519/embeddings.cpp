@@ -6188,7 +6188,7 @@ void ggml_compute_forward_gte_linear(
         const float * x2 = nt > 2 ? (const float *) ((const char *) inp->data + (token0 + 2) * inp->nb[1]) : nullptr;
         const float * x3 = nt > 3 ? (const float *) ((const char *) inp->data + (token0 + 3) * inp->nb[1]) : nullptr;
 
-#if defined(GGML_SIMD)
+#if defined(GGML_SIMD) && !defined(__riscv_v_intrinsic)
         if (nt == token_block) {
             const int64_t np = (in_features & ~(GGML_F32_STEP - 1));
             GGML_F32_VEC sum0[GGML_F32_ARR] = { GGML_F32_VEC_ZERO };
