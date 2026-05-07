@@ -21,7 +21,30 @@ def test_riscv64_wheel_build_disables_unsupported_zvfh(monkeypatch):
 
     module = load_setup_module(monkeypatch)
 
-    assert module._platform_cmake_args() == ["-DGGML_RV_ZVFH=OFF"]
+    assert module._platform_cmake_args() == [
+        "-DGGML_RV_ZFH=OFF",
+        "-DGGML_RV_ZVFH=OFF",
+        "-DGGML_RV_ZICBOP=OFF",
+        "-DGGML_RV_ZIHINTPAUSE=OFF",
+    ]
+
+
+def test_riscv64_wheel_build_limits_parallelism(monkeypatch):
+    monkeypatch.setenv("CIBW_ARCHS", "riscv64")
+    monkeypatch.delenv("EMBEDDINGS_CPP_BUILD_JOBS", raising=False)
+
+    module = load_setup_module(monkeypatch)
+
+    assert module._cmake_build_jobs() == "2"
+
+
+def test_explicit_build_jobs_override_riscv64_default(monkeypatch):
+    monkeypatch.setenv("CIBW_ARCHS", "riscv64")
+    monkeypatch.setenv("EMBEDDINGS_CPP_BUILD_JOBS", "4")
+
+    module = load_setup_module(monkeypatch)
+
+    assert module._cmake_build_jobs() == "4"
 
 
 def test_non_riscv64_wheel_build_keeps_default_cmake_args(monkeypatch):
