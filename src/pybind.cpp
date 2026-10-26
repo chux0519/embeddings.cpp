@@ -64,9 +64,15 @@ PYBIND11_MODULE(_C, m) {
              "texts"_a, "normalize"_a = true, "pooling_method"_a = PoolingMethod::MEAN);
 
     // 绑定工厂函数，这是用户与之交互的主要方式
-    m.def("create_embedding", &create_embedding,
-          "Creates a ready-to-use embedding model from a GGUF file.",
-          "gguf_path"_a,
+    m.def("create_embedding",
+          [](const std::string& gguf_path, int max_tokens) {
+              EmbeddingOptions options;
+              options.max_tokens = max_tokens;
+              return create_embedding(gguf_path, options);
+          },
+          "Creates a ready-to-use embedding model from a GGUF file. "
+          "max_tokens > 0 overrides the tokenizer's truncation length.",
+          "gguf_path"_a, "max_tokens"_a = 0,
           // 告诉 pybind，C++ 返回的 unique_ptr 的所有权将转移给 Python GC
           py::return_value_policy::take_ownership);
 }

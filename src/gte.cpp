@@ -755,7 +755,9 @@ struct ggml_cgraph *GteBertModel::BuildGraph(
         auto *batch_tokens =
             ggml_view_2d(ctx0, inpL, D, valid_tokens, inpL->nb[1],
                          token_offsets[b] * inpL->nb[1]);
-        auto *mean = ggml_mean(ctx0, batch_tokens);
+        // ggml_mean averages along ne0 (the hidden dimension); transpose so
+        // it averages over the tokens instead.
+        auto *mean = ggml_mean(ctx0, ggml_cont(ctx0, ggml_transpose(ctx0, batch_tokens)));
         batch_pooled.push_back(ggml_reshape_2d(ctx0, mean, D, 1));
       } else {
         batch_pooled.push_back(zero_pooled);
