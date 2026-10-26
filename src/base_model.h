@@ -73,6 +73,12 @@ class BaseModel {
       const std::vector<TokenizedInput> &batch, bool normalize = true,
       PoolingMethod pooling_method = PoolingMethod::MEAN);
 
+  // Model metadata (valid after loading).
+  const std::string &architecture() const { return arch; }
+  const std::string &name() const { return model_name; }
+  int ftype() const { return model_ftype; }
+  int hidden_size() const { return hparams ? hparams->hidden_size : 0; }
+
  protected:
   // Pure virtual function - subclasses must implement
   virtual struct ggml_cgraph *BuildGraph(
@@ -98,6 +104,7 @@ class BaseModel {
   // Member variables
   std::string model_path;
   std::string arch;
+  std::string model_name;
   int model_ftype = GGML_FTYPE_UNKNOWN;
   BaseConfig *hparams =
       nullptr;  // NEW: Use base class pointer to store hparams

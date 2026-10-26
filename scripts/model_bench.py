@@ -192,8 +192,15 @@ def load_python_runner(spec: ModelSpec, torch_threads: int) -> Callable[[list[st
     model.eval()
     model.to("cpu")
 
+    # Truncate exactly like the GGUF tokenizer does (it embeds tokenizer.json,
+    # whose truncation setting embeddings.cpp honours: 512 for Snowflake even
+    # though the model supports 8192). Comparing against a longer reference
+    # window made long inputs look like numeric errors.
+    truncation = getattr(getattr(tokenizer, "backend_tokenizer", None), "truncation", None) or {}
+    reference_max_length = int(truncation.get("max_length") or 8192)
+
     def encode(texts: list[str]) -> list[list[float]]:
-        inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt", max_length=8192)
+        inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt", max_length=reference_max_length)
         if spec.model_id.startswith("Snowflake/"):
             batch_size, seq_length = inputs["input_ids"].shape
             inputs["position_ids"] = torch.arange(seq_length, dtype=torch.long).unsqueeze(0).expand(batch_size, -1)

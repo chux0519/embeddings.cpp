@@ -10,9 +10,30 @@ namespace embeddings {
 // Returns a std::unique_ptr for automatic memory management.
 std::unique_ptr<BaseModel> create_model_from_gguf(const std::string& gguf_path);
 
+// Options for create_embedding.
+struct EmbeddingOptions {
+  // Maximum tokens per input (including special tokens); longer inputs are
+  // truncated. 0 keeps the tokenizer's own setting (often 512).
+  int max_tokens = 0;
+};
+
+// Metadata about a loaded embedding model.
+struct EmbeddingInfo {
+  std::string architecture;
+  std::string name;
+  std::string ftype;   // e.g. "q4_k", "f16"
+  int dimensions = 0;  // embedding size
+  int max_tokens = 0;  // truncation length in effect (0 = none)
+};
+
 class Embedding {
  public:
   virtual ~Embedding() = default;
+  // Not pure: Python subclasses (pybind trampolines) need not implement them.
+  virtual EmbeddingInfo info() const { return {}; }
+  // Token counts of the inputs without truncation (special tokens
+  // included), so callers can tell whether an input was truncated.
+  virtual std::vector<size_t> count_tokens(const std::vector<std::string>&) { return {}; }
 
   virtual TokenizedInput tokenize(const std::string&,
                             bool add_special_tokens = true) = 0;
@@ -30,5 +51,7 @@ class Embedding {
 };
 
 std::unique_ptr<Embedding> create_embedding(const std::string& gguf_path);
+std::unique_ptr<Embedding> create_embedding(const std::string& gguf_path,
+                                            const EmbeddingOptions& options);
 
 }  // namespace embeddings

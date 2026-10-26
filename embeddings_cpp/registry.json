@@ -85,7 +85,7 @@
       }
     ],
     "correctness": {
-      "python_min_cos": 0.96,
+      "python_min_cos": 0.985,
       "batch_min_cos": 0.999
     },
     "benchmark": {

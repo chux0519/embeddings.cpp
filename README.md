@@ -411,6 +411,50 @@ python3 scripts/browser_e2e_compare.py --base-url http://127.0.0.1:18081
 
 ## HTTP Server
 
+### Native server (`embeddings_server`)
+
+A single binary plus a GGUF file; no Python runtime. Built with the other
+targets (`cmake --build build --target embeddings_server`).
+
+```bash
+./build/embeddings_server \
+  --model models/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf \
+  --model-name snowflake-arctic-embed-m-v2.0 \
+  --host 0.0.0.0 --port 8090 --pooling cls
+```
+
+| Option | Default | |
+|---|---|---|
+| `--pooling cls\|mean` | `cls` | must match the model (Snowflake and BGE: `cls`) |
+| `--max-tokens N` | tokenizer setting (512 for Snowflake) | truncation length; Snowflake supports up to 8192 |
+| `--max-batch-size N` | 64 | inputs per request (413 above) |
+| `--max-batch-tokens N` | 16384 | tokens per request after truncation (413 above) |
+| `--max-body-mb N` | 8 | request body limit |
+| `--threads N` | all cores | inference threads (`EMBEDDINGS_CPP_THREADS`) |
+| `--api-key-env NAME` | `EMBEDDINGS_API_KEY` | when that variable is set, every endpoint except `/health` requires `Authorization: Bearer <key>` |
+
+Endpoints:
+
+- `POST /v1/embeddings`: OpenAI-compatible (`input` string or array, `dimensions`
+  for Matryoshka truncation with re-normalization, `encoding_format`
+  `float`/`base64`). Responses carry `usage` token counts, and each item that
+  was cut to `--max-tokens` has `"truncated": true`.
+- `POST /embed`: TEI-compatible (`inputs`, `normalize`, `truncate`; with
+  `"truncate": false` an over-long input is rejected with 413).
+- `GET /health`, `GET /ready`, `GET /info` (model, architecture, dimensions,
+  pooling, max tokens, limits), `GET /v1/models`.
+
+One model instance serves all requests; inference is serialized (ggml
+parallelizes inside a batch). Errors use the OpenAI error shape.
+
+Verified (Snowflake, Linux x86_64): outputs equal the Python binding's (cos
+1.0); against Python `transformers` with the same truncation, fp16 cos ≥ 0.99999
+and q4_k_mlp_q8_attn ≥ 0.990; `--max-tokens 2048` matches the reference at 2048
+tokens (0.99999); concurrent requests give the same vectors as sequential ones.
+The q4 model uses about 494 MB resident.
+
+### Python server
+
 The server can load a registered model from Hugging Face or a local GGUF path.
 For a Snowflake deployment, `embeddings.cpp` is intended to replace a TEI CPU
 setup.

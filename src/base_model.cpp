@@ -173,8 +173,8 @@ void BaseModel::LoadModelImpl(const std::string &gguf_model) {
   fprintf(stderr, "\n%s: GGUF meta-data\n", __func__);
   arch = get_str(ctx_gguf, KEY_ARCHITECTURE);
   model_ftype = get_u32(ctx_gguf, KEY_FTYPE);
-  fprintf(stderr, "%s: model name:   %s\n", __func__,
-          get_str(ctx_gguf, KEY_NAME).c_str());
+  model_name = get_str(ctx_gguf, KEY_NAME);
+  fprintf(stderr, "%s: model name:   %s\n", __func__, model_name.c_str());
   fprintf(stderr, "%s: architecture: %s\n", __func__, arch.c_str());
   fprintf(stderr, "%s: ftype:        %s (%d)\n", __func__,
           get_ftype(model_ftype).c_str(), model_ftype);
