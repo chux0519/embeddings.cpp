@@ -69,7 +69,7 @@ const { chromium } = require('playwright');
     '&pooling=cls';
   await page.goto(url, { waitUntil: 'load', timeout: 120000 });
   await page.evaluate((line) => { window.postMessage({ type: 'encode-request', batchLine: line }, '*'); }, process.env.BATCH_LINE);
-  await page.waitForFunction(() => document.querySelector('#log')?.textContent.includes('\"vectors\": ['), { timeout: 120000 });
+  await page.waitForFunction(() => document.querySelector('#log')?.textContent.includes('\"vectors\": ['), undefined, { timeout: 120000 });
   const payload = await page.evaluate(() => {
     const text = document.querySelector('#log')?.textContent || '';
     const start = text.indexOf('{\n');
