@@ -28,8 +28,11 @@ def run_node(js: str, env: dict[str, str], timeout: int = 120) -> str:
         text=True,
         env={**os.environ, **env},
         timeout=timeout,
-        check=True,
     )
+    if result.returncode != 0:
+        # Without this the CI log only shows the (long) node command line.
+        sys.stderr.write(result.stdout[-4000:] + result.stderr[-4000:])
+        raise SystemExit(f"node exited with {result.returncode}")
     return result.stdout.strip()
 
 
