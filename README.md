@@ -436,8 +436,29 @@ python3 scripts/browser_e2e_compare.py --base-url http://127.0.0.1:18081
 
 ### Native server (`embeddings_server`)
 
-A single binary plus a GGUF file; no Python runtime. Built with the other
-targets (`cmake --build build --target embeddings_server`).
+A single binary plus a GGUF file; no Python runtime. Each
+[GitHub release](https://github.com/chux0519/embeddings.cpp/releases/latest)
+has prebuilt binaries with ggml and the tokenizer linked in:
+
+| Asset | Runs on |
+|---|---|
+| `embeddings_server-linux-amd64` | x86-64 with AVX2 (Haswell and newer), glibc 2.35+ |
+| `embeddings_server-linux-arm64` | ARMv8.2 with dot product (Graviton2, Ampere, Raspberry Pi 5), glibc 2.35+ |
+| `embeddings_server-darwin-arm64` | Apple silicon, macOS 13+, Metal |
+| `embeddings_server-windows-amd64.exe` | x86-64 with AVX2 |
+
+```bash
+asset=embeddings_server-linux-amd64
+base=https://github.com/chux0519/embeddings.cpp/releases/latest/download
+curl -fLO "$base/$asset" && curl -fLO "$base/SHA256SUMS"
+grep " $asset\$" SHA256SUMS | sha256sum -c -    # macOS: shasum -a 256 -c -
+chmod +x "$asset" && ./"$asset" --version
+```
+
+On macOS, a binary downloaded with a browser is quarantined; clear it with
+`xattr -d com.apple.quarantine <file>` (curl does not set the flag). For other
+CPUs, build it with the other targets
+(`cmake --build build --target embeddings_server`).
 
 ```bash
 ./build/embeddings_server \
@@ -455,6 +476,7 @@ targets (`cmake --build build --target embeddings_server`).
 | `--max-body-mb N` | 8 | request body limit |
 | `--threads N` | all cores | inference threads (`EMBEDDINGS_CPP_THREADS`) |
 | `--api-key-env NAME` | `EMBEDDINGS_API_KEY` | when that variable is set, every endpoint except `/health` requires `Authorization: Bearer <key>` |
+| `--version` | | print the version and exit |
 
 Endpoints:
 

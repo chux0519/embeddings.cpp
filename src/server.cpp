@@ -27,7 +27,10 @@ using embeddings::PoolingMethod;
 
 namespace {
 
-constexpr const char* kVersion = "0.1.0";
+#ifndef EMBEDDINGS_CPP_VERSION
+#define EMBEDDINGS_CPP_VERSION "dev"
+#endif
+constexpr const char* kVersion = EMBEDDINGS_CPP_VERSION;
 
 struct Options {
   std::string model;
@@ -58,7 +61,8 @@ void usage(const char* argv0) {
                "  --threads N             inference threads (default: all cores)\n"
                "  --http-threads N        connection threads (default 8)\n"
                "  --api-key-env NAME      require 'Authorization: Bearer $NAME' when that\n"
-               "                          variable is set (default EMBEDDINGS_API_KEY)\n",
+               "                          variable is set (default EMBEDDINGS_API_KEY)\n"
+               "  --version               print the version and exit\n",
                argv0);
 }
 
@@ -84,7 +88,10 @@ bool parse_args(int argc, char** argv, Options& o) {
     else if (a == "--threads") o.threads = std::atoi(next("--threads"));
     else if (a == "--http-threads") o.http_threads = std::atoi(next("--http-threads"));
     else if (a == "--api-key-env") o.api_key_env = next("--api-key-env");
-    else if (a == "--help" || a == "-h") {
+    else if (a == "--version") {
+      std::printf("embeddings_server %s\n", kVersion);
+      std::exit(0);
+    } else if (a == "--help" || a == "-h") {
       usage(argv[0]);
       std::exit(0);
     } else {
