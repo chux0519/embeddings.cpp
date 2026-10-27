@@ -128,8 +128,14 @@
             const tx = db.transaction(modelStoreName, "readwrite");
             tx.oncomplete = () => resolve();
             tx.onerror = () => reject(tx.error || new Error("failed to write model cache"));
+            tx.onabort = () => reject(tx.error || new Error("model cache write aborted"));
             tx.objectStore(modelStoreName).put(bytes.buffer.slice(0), url);
           });
+        } catch (err) {
+          // The cache is an optimization: a full quota (e.g. headless
+          // Chromium with a large model) must not fail the encode.
+          postStatus("model-idb-skip", `${url}: ${err && err.message ? err.message : err}`);
+          log.textContent += `[model-idb-skip] ${err && err.message ? err.message : err}\n`;
         } finally {
           db.close();
         }
@@ -196,7 +202,7 @@
             offset += chunk.byteLength;
           }
           if (cache) {
-            await cache.put(cacheKey, new Response(bytes, { headers: { "Content-Type": response.headers.get("content-type") || "application/octet-stream" } }));
+            await cache.put(cacheKey, new Response(bytes, { headers: { "Content-Type": response.headers.get("content-type") || "application/octet-stream" } })).catch(() => {});
           }
           if (cacheKey && cacheKey.includes("/model/")) {
             await writeModelCache(url, bytes);
@@ -206,7 +212,7 @@
           return bytes;
         }
         if (cache) {
-          await cache.put(cacheKey, response.clone());
+          await cache.put(cacheKey, response.clone()).catch(() => {});
         }
         const bytes = new Uint8Array(await response.arrayBuffer());
         if (cacheKey && cacheKey.includes("/model/")) {
