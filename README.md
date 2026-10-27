@@ -61,6 +61,21 @@ cmake --build build --target quantize
 .\build\Release\quantize.exe .\models\bge-m3.fp16.gguf .\models\bge-m3.q4_k.gguf q4_k
 ```
 
+Mixed quantization: `EMBEDDINGS_CPP_SKIP_QUANT_PATTERNS` (comma-separated
+substrings of tensor names) keeps matching tensors as they are, and already
+quantized tensors are never re-quantized, so two passes give a mix. For
+bge-m3, q4_k MLP and vocabulary with q8_0 attention matches q8_0 retrieval
+quality and is ~40% faster on x86 (AVX2), 384 MB instead of 612 MB:
+
+```bash
+EMBEDDINGS_CPP_SKIP_QUANT_PATTERNS='attention.,position_embeddings' \
+  ./build/quantize models/bge-m3.fp16.gguf models/bge-m3.q4_k_mlp_emb.tmp.gguf q4_k
+./build/quantize models/bge-m3.q4_k_mlp_emb.tmp.gguf models/bge-m3.q4_k_mlp_emb_q8_attn.gguf q8_0
+```
+
+On Apple silicon q8_0 stays faster on CPU (i8mm repack); with Metal both run
+at the same speed.
+
 ### Supported Quantization Types
 
 - `q4_k`: 4-bit quantization with K-means clustering (good balance of size and quality)
@@ -441,8 +456,11 @@ Endpoints:
   was cut to `--max-tokens` has `"truncated": true`.
 - `POST /embed`: TEI-compatible (`inputs`, `normalize`, `truncate`; with
   `"truncate": false` an over-long input is rejected with 413).
-- `GET /health`, `GET /ready`, `GET /info` (model, architecture, dimensions,
-  pooling, max tokens, limits), `GET /v1/models`.
+- `GET /health`, `GET /ready`, `GET /info` (model, architecture, ftype,
+  `weight_types`, dimensions, pooling, max tokens, limits), `GET /v1/models`.
+  `weight_types` lists matrix weight types with counts (`"q4_K:49,q8_0:97"`);
+  unlike the file-level `ftype` it tells mixed quantizations apart, so clients
+  can use it to decide whether vectors from two servers are comparable.
 
 One model instance serves all requests; inference is serialized (ggml
 parallelizes inside a batch). Errors use the OpenAI error shape.

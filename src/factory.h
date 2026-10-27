@@ -22,6 +22,7 @@ struct EmbeddingInfo {
   std::string architecture;
   std::string name;
   std::string ftype;   // e.g. "q4_k", "f16"
+  std::string weight_types;  // e.g. "q4_k:48,q8_0:98" (tells mixed quantizations apart)
   int dimensions = 0;  // embedding size
   int max_tokens = 0;  // truncation length in effect (0 = none)
 };

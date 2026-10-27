@@ -16,6 +16,7 @@
 #endif
 
 #include <fstream>
+#include <map>
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -180,6 +181,22 @@ void BaseModel::LoadModelImpl(const std::string &gguf_model) {
           get_ftype(model_ftype).c_str(), model_ftype);
   fprintf(stderr, "%s: desc: %s\n", __func__,
           get_str(ctx_gguf, KEY_DESCRIPTION).c_str());
+  {
+    std::map<std::string, int> counts;
+    for (ggml_tensor *t = ggml_get_first_tensor(ctx_ggml); t != nullptr;
+         t = ggml_get_next_tensor(ctx_ggml, t)) {
+      if (ggml_n_dims(t) >= 2) {
+        counts[ggml_type_name(t->type)]++;
+      }
+    }
+    model_weight_types.clear();
+    for (const auto &[type, n] : counts) {
+      if (!model_weight_types.empty()) model_weight_types += ",";
+      model_weight_types += type + ":" + std::to_string(n);
+    }
+    fprintf(stderr, "%s: weights:      %s\n", __func__,
+            model_weight_types.c_str());
+  }
 
   // 2. Call virtual functions to let subclasses load specific hyperparameters
   LoadHyperparameters(ctx_gguf);

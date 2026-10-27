@@ -184,6 +184,7 @@ class Service {
     return {{"model", name_},
             {"architecture", info_.architecture},
             {"ftype", info_.ftype},
+            {"weight_types", info_.weight_types},
             {"dimensions", info_.dimensions},
             {"pooling", opts_.pooling},
             {"max_tokens", info_.max_tokens},

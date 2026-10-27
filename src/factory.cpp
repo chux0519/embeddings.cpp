@@ -87,7 +87,7 @@ class EmbeddingImpl : public Embedding {
   }
 
   EmbeddingInfo info() const override {
-    return {model->architecture(), model->name(), get_ftype(model->ftype()), model->hidden_size(), max_tokens_};
+    return {model->architecture(), model->name(), get_ftype(model->ftype()), model->weight_types(), model->hidden_size(), max_tokens_};
   }
 
   // Not thread-safe (temporarily disables truncation); neither is encoding.

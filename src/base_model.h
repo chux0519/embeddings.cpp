@@ -77,6 +77,9 @@ class BaseModel {
   const std::string &architecture() const { return arch; }
   const std::string &name() const { return model_name; }
   int ftype() const { return model_ftype; }
+  // Types of the matrix weights with counts, e.g. "q4_k:48,q8_0:98". The
+  // file-level ftype does not tell mixed quantizations apart.
+  const std::string &weight_types() const { return model_weight_types; }
   int hidden_size() const { return hparams ? hparams->hidden_size : 0; }
 
  protected:
@@ -106,6 +109,7 @@ class BaseModel {
   std::string arch;
   std::string model_name;
   int model_ftype = GGML_FTYPE_UNKNOWN;
+  std::string model_weight_types;
   BaseConfig *hparams =
       nullptr;  // NEW: Use base class pointer to store hparams
   BackendContext ctx;
