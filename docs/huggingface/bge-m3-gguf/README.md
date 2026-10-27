@@ -28,16 +28,17 @@ text-generation model.
 
 Mixed quantization: the feed-forward weights and the 250k-token vocabulary
 table are `q4_k`, attention stays `q8_0`. Compared with a plain `q8_0` file
-(612 MB):
+(584 MB, same units as the table above):
 
 - Retrieval quality is unchanged on a Chinese/English agent-history
   benchmark (2040 documents: top-1 66%, recall@5 78–83%, both files).
 - Cosine to the fp16 model: mean 0.990, min 0.988 (`q8_0`: 0.999).
 - About 40% faster on x86 CPUs with AVX2 (Xeon E5-2673 v3, 12 threads:
   2.0 vs 1.4 docs/s) and ~230 MB less RAM.
-- On Apple silicon CPUs `q8_0` is ~18% faster (i8mm repack); with Metal both
-  run at the same speed. Build `q8_0` yourself (below) if you need strict
-  alignment with Python or run on Apple CPUs only.
+- Apple silicon: use Metal (default on macOS, see below). On an M4 this file
+  runs at 11.5 docs/s with Metal vs ~5.5 on the CPU, the same speed as
+  `q8_0`. Only CPU-only Apple builds favour `q8_0` (~18% faster there).
+  Build `q8_0` yourself (below) if you need strict alignment with Python.
 
 ## Python Usage
 
@@ -56,6 +57,8 @@ pip install "embeddings-cpp[hub]"
 
 ## Recommended embeddings.cpp Build
 
+Linux and Windows (CPU):
+
 ```bash
 cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
@@ -70,6 +73,16 @@ cmake -S . -B build \
   -DGGML_METAL=OFF
 
 cmake --build build -j "$(nproc)"
+```
+
+On macOS (Apple silicon) use Metal instead: the PyPI wheels and a default
+CMake configure enable it, and `embeddings.cpp` picks the Metal backend
+automatically.
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+  -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON
+cmake --build build -j "$(sysctl -n hw.ncpu)"
 ```
 
 ## Recommended CPU Runtime

@@ -35,6 +35,8 @@ The mixed quantization policy is:
 
 ## Recommended embeddings.cpp Build
 
+Linux and Windows (CPU):
+
 ```bash
 cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
@@ -49,6 +51,18 @@ cmake -S . -B build \
   -DGGML_METAL=OFF
 
 cmake --build build -j "$(nproc)"
+```
+
+On macOS (Apple silicon) use Metal instead: the PyPI wheels and a default
+CMake configure enable it, and `embeddings.cpp` picks the Metal backend
+automatically. On an M4 this artifact embeds 32.9 docs/s with Metal vs 25.6
+on the CPU (output cosine to the CPU build ≥ 0.998); single short queries are
+faster on the CPU (8 ms vs 27 ms).
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+  -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON
+cmake --build build -j "$(sysctl -n hw.ncpu)"
 ```
 
 ## Recommended CPU Runtime

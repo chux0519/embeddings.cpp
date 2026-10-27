@@ -561,6 +561,12 @@ Container images can be published to GHCR with
 
 ### macOS (ARM)
 
+Use Metal on Apple silicon (the PyPI wheels and a default CMake configure
+enable it; the backend is picked automatically). Measured on an M4 with the
+published artifacts: bge-m3 11.5 docs/s with Metal vs ~5.5 on the CPU,
+Snowflake 32.9 vs 25.6; single short queries take ~20–27 ms on Metal vs
+~10 ms on the CPU.
+
 Configure and build with Metal support:
 ```bash
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
