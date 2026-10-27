@@ -10,12 +10,19 @@
 - Local path: `ggml/`
 
 The current vendored tree is recorded in `.vendor/ggml-upstream.json` as
-llama.cpp `b8833` at commit
-`45cac7ca703fb9085eae62b9121fca01d20177f6`, imported in
-`f5bb1543e899bacc11b90330632adfdf6cffd811` on 2026-04-25.
+llama.cpp `b11913` at commit
+`7aca0d2ea8d92b56911233b822db01f9fbb1ae50`, imported in `021f54f` on
+2026-10-27 (previously `b8833`, 2026-04-25).
 
 The latest upstream release checked for this tracking pass was llama.cpp
-`b8833` (`45cac7c`) on 2026-04-24.
+`b11913` (`7aca0d2`) on 2026-10-27.
+
+The b11913 import re-applied the local overlay with a 3-way merge
+(`git merge-file`) of each patched file: upstream b11913 as "ours", pristine
+b8833 as the base and the previous vendored file as "theirs". Using pristine
+upstream as the base (not the previous import commit) matters: the overlay
+also touches files outside the GTE ops (`repack.cpp`, `ggml-rpc.h`, the
+llamafile fallback in `ggml-cpu.c`).
 
 ## Update Workflow
 

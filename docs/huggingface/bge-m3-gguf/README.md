@@ -24,11 +24,20 @@ text-generation model.
 
 | File | Quantization | Size | SHA256 |
 |---|---|---:|---|
-| `{{GGUF_FILE}}` | `q8_0` | `{{GGUF_SIZE}}` | `{{GGUF_SHA256}}` |
+| `{{GGUF_FILE}}` | `q4_k` MLP and vocabulary, `q8_0` attention | `{{GGUF_SIZE}}` | `{{GGUF_SHA256}}` |
 
-This is the conservative BGE-M3 CPU artifact. The benchmarked baseline keeps
-strict alignment with Python CPU while using substantially less memory than the
-Python `transformers` path.
+Mixed quantization: the feed-forward weights and the 250k-token vocabulary
+table are `q4_k`, attention stays `q8_0`. Compared with a plain `q8_0` file
+(612 MB):
+
+- Retrieval quality is unchanged on a Chinese/English agent-history
+  benchmark (2040 documents: top-1 66%, recall@5 78–83%, both files).
+- Cosine to the fp16 model: mean 0.990, min 0.988 (`q8_0`: 0.999).
+- About 40% faster on x86 CPUs with AVX2 (Xeon E5-2673 v3, 12 threads:
+  2.0 vs 1.4 docs/s) and ~230 MB less RAM.
+- On Apple silicon CPUs `q8_0` is ~18% faster (i8mm repack); with Metal both
+  run at the same speed. Build `q8_0` yourself (below) if you need strict
+  alignment with Python or run on Apple CPUs only.
 
 ## Python Usage
 
@@ -88,11 +97,20 @@ uv run scripts/convert.py \
   models/bge-m3.f16.gguf \
   f16
 
+EMBEDDINGS_CPP_SKIP_QUANT_PATTERNS='attention.,position_embeddings' \
 ./build/quantize \
   models/bge-m3.f16.gguf \
+  models/bge-m3.q4_k_mlp_emb_attnf16.gguf \
+  q4_k
+
+./build/quantize \
+  models/bge-m3.q4_k_mlp_emb_attnf16.gguf \
   models/{{GGUF_FILE}} \
   q8_0
 ```
+
+For a plain `q8_0` file, quantize `models/bge-m3.f16.gguf` with `q8_0` in one
+step.
 
 The registry-driven artifact builder performs the same conversion and
 quantization pipeline:

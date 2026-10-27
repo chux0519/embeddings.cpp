@@ -9,21 +9,22 @@ from embeddings_cpp.registry import get_model_spec, list_models
 from scripts.correctness import default_quantizations
 
 
-def test_bge_m3_registry_entry_publishes_default_q8_artifact():
+def test_bge_m3_registry_entry_publishes_mixed_q4k_q8_artifact():
     spec = get_model_spec("BAAI/bge-m3")
 
     assert "BAAI/bge-m3" in list_models()
     assert spec.model_id == "BAAI/bge-m3"
     assert spec.slug == "bge-m3"
     assert spec.hf_repo_id == "chux0519/bge-m3-gguf-embeddings-cpp"
-    assert spec.artifact_file == "bge-m3.q8_0.gguf"
+    assert spec.artifact_file == "bge-m3.q4_k_mlp_emb_q8_attn.gguf"
     assert spec.source_dtype == "f16"
     assert spec.pooling == "cls"
     assert spec.embedding_dim == 1024
     assert spec.runtime_env["EMBEDDINGS_CPP_CPU_REPACK"] == "1"
-    assert [step["name"] for step in spec.quantization_steps] == ["q8_0"]
-    assert spec.correctness["python_min_cos"] >= 0.999
-    assert spec.correctness["batch_min_cos"] >= 0.999999
+    assert [step["name"] for step in spec.quantization_steps] == ["q4_k_mlp_emb_attnf16", "q4_k_mlp_emb_q8_attn"]
+    assert spec.quantization_steps[0]["skip_patterns"] == ["attention.", "position_embeddings"]
+    assert spec.correctness["python_min_cos"] >= 0.985
+    assert spec.correctness["batch_min_cos"] >= 0.998
 
 
 def test_bge_m3_alias_resolves_to_canonical_spec():
@@ -31,7 +32,7 @@ def test_bge_m3_alias_resolves_to_canonical_spec():
 
 
 def test_bge_m3_defaults_to_published_artifact_quantization():
-    assert default_quantizations(get_model_spec("BAAI/bge-m3")) == ["q8_0"]
+    assert default_quantizations(get_model_spec("BAAI/bge-m3")) == ["q4_k_mlp_emb_q8_attn"]
 
 
 def test_published_registry_entry_defaults_to_artifact_quantization():

@@ -3,7 +3,7 @@
     "model_id": "BAAI/bge-m3",
     "slug": "bge-m3",
     "hf_repo_id": "chux0519/bge-m3-gguf-embeddings-cpp",
-    "artifact_file": "bge-m3.q8_0.gguf",
+    "artifact_file": "bge-m3.q4_k_mlp_emb_q8_attn.gguf",
     "source_dtype": "f16",
     "pooling": "cls",
     "embedding_dim": 1024,
@@ -23,14 +23,20 @@
     ],
     "quantization_steps": [
       {
-        "name": "q8_0",
+        "name": "q4_k_mlp_emb_attnf16",
+        "quant": "q4_k",
+        "output_file": "bge-m3.q4_k_mlp_emb_attnf16.gguf",
+        "skip_patterns": ["attention.", "position_embeddings"]
+      },
+      {
+        "name": "q4_k_mlp_emb_q8_attn",
         "quant": "q8_0",
-        "output_file": "bge-m3.q8_0.gguf"
+        "output_file": "bge-m3.q4_k_mlp_emb_q8_attn.gguf"
       }
     ],
     "correctness": {
-      "python_min_cos": 0.999,
-      "batch_min_cos": 0.999999
+      "python_min_cos": 0.985,
+      "batch_min_cos": 0.998
     },
     "benchmark": {
       "batch_sizes": [1, 4, 8],

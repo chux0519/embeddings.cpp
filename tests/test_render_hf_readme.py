@@ -36,7 +36,7 @@ def test_render_hf_readme_uses_bge_m3_default_template(tmp_path):
     readme = render_readme(tmp_path, "BAAI/bge-m3")
 
     assert "base_model: BAAI/bge-m3" in readme
-    assert "`bge-m3.q8_0.gguf`" in readme
+    assert "`bge-m3.q4_k_mlp_emb_q8_attn.gguf`" in readme
     assert "EMBEDDINGS_CPP_CPU_REPACK=1" in readme
     assert "model = load(\"BAAI/bge-m3\")" in readme
     assert "{{" not in readme

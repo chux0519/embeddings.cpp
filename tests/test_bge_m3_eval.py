@@ -43,9 +43,9 @@ def test_default_thresholds_follow_bge_m3_registry_contract():
 
     apply_default_thresholds(args)
 
-    assert args.min_cos == 0.999
-    assert args.batch_min_cos == 0.999999
-    assert args.quantized_batch_min_cos == 0.999999
+    assert args.min_cos == 0.985
+    assert args.batch_min_cos == 0.998
+    assert args.quantized_batch_min_cos == 0.998
 
 
 def test_explicit_thresholds_are_preserved_for_quantization_sweeps():

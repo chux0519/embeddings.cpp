@@ -361,6 +361,14 @@ namespace.
 - Direct GGUF file:
   `https://huggingface.co/chux0519/snowflake-arctic-embed-m-v2.0-gguf-embeddings-cpp/resolve/main/snowflake-arctic-embed-m-v2.0.q4_k_mlp_q8_attn.gguf`
 
+The default bge-m3 artifact (q4_k MLP and vocabulary, q8_0 attention; same
+retrieval quality as q8_0, ~40% faster on AVX2 CPUs, 384 MB):
+
+- Model repository:
+  `https://huggingface.co/chux0519/bge-m3-gguf-embeddings-cpp`
+- Direct GGUF file:
+  `https://huggingface.co/chux0519/bge-m3-gguf-embeddings-cpp/resolve/main/bge-m3.q4_k_mlp_emb_q8_attn.gguf`
+
 ```python
 from embeddings_cpp import load
 

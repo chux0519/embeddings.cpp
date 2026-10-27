@@ -17,9 +17,9 @@ def test_model_config_comes_from_registry():
     assert config.model_id == "BAAI/bge-m3"
     assert config.pooling == "cls"
     assert config.embedding_dim == 1024
-    assert config.python_min_cos == 0.999
-    assert config.batch_min_cos == 0.999999
-    assert config.quantized_batch_min_cos == 0.999999
+    assert config.python_min_cos == 0.985
+    assert config.batch_min_cos == 0.998
+    assert config.quantized_batch_min_cos == 0.998
     assert config.batch_sizes == [1, 4, 8]
     assert config.gguf_paths["q8_0"].endswith("models/bge-m3.q8_0.gguf")
 
@@ -28,7 +28,7 @@ def test_default_quantizations_follow_registry_artifact_or_source_dtype():
     bge = get_model_spec("BAAI/bge-m3")
     snowflake = get_model_spec("Snowflake/snowflake-arctic-embed-m-v2.0")
 
-    assert default_quantizations(bge) == ["q8_0"]
+    assert default_quantizations(bge) == ["q4_k_mlp_emb_q8_attn"]
     assert default_quantizations(snowflake) == ["q4_k_mlp_q8_attn"]
 
 
@@ -67,8 +67,8 @@ def test_build_correctness_rows_reports_drift_without_fail_semantics():
             "variant": "q8_0",
             "cases": {
                 "single_en": {
-                    "batch": [[0.995, 0.1]],
-                    "single": [[0.995, 0.1]],
+                    "batch": [[0.98, 0.2]],
+                    "single": [[0.98, 0.2]],
                 }
             },
         }
@@ -79,7 +79,7 @@ def test_build_correctness_rows_reports_drift_without_fail_semantics():
     assert len(rows) == 2
     assert rows[0]["runner"] == "embeddings_cpp_vs_python_cpu"
     assert rows[0]["status"] == "outside_tolerance"
-    assert rows[0]["tier"] == "practical"
+    assert rows[0]["tier"] == "relaxed"
     assert rows[1]["runner"] == "embeddings_cpp_batch_vs_single"
     assert rows[1]["status"] == "within_tolerance"
     assert rows[1]["tier"] == "strict"
