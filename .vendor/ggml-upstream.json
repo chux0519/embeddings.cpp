@@ -6,16 +6,16 @@
     "subdirectory": "ggml"
   },
   "current": {
-    "ref": "b8833",
-    "commit": "45cac7ca703fb9085eae62b9121fca01d20177f6",
-    "imported_in": "f5bb1543e899bacc11b90330632adfdf6cffd811",
-    "date": "2026-04-25",
-    "notes": "Exact upstream ref recorded."
+    "ref": "b11913",
+    "commit": "7aca0d2ea8d92b56911233b822db01f9fbb1ae50",
+    "imported_in": "ggml-b11913",
+    "date": "2026-10-27",
+    "notes": "Exact upstream ref recorded; local overlay (GTE ops, repack tweaks, llamafile fallback fix, WebGPU GTE kernels) re-applied with a 3-way merge against pristine b8833."
   },
   "latest_checked": {
-    "date": "2026-04-24",
-    "ref": "b8833",
-    "commit": "45cac7c",
+    "date": "2026-10-27",
+    "ref": "b11913",
+    "commit": "7aca0d2",
     "source": "https://github.com/ggml-org/llama.cpp/releases"
   },
   "local_policy": {
