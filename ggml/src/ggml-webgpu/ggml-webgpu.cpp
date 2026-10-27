@@ -4376,9 +4376,14 @@ static void ggml_backend_webgpu_request_adapter(wgpu::Instance & instance, wgpu:
         UINT64_MAX);
 }
 
-static void create_webgpu_device(ggml_backend_webgpu_reg_context * ctx) {
+// Returns false (instead of aborting) when no adapter or device is available,
+// e.g. a browser whose adapter request fails after registration.
+static bool create_webgpu_device(ggml_backend_webgpu_reg_context * ctx) {
     ggml_backend_webgpu_request_adapter(ctx->webgpu_global_ctx->instance, ctx->webgpu_global_ctx->adapter);
-    GGML_ASSERT(ctx->webgpu_global_ctx->adapter != nullptr);
+    if (ctx->webgpu_global_ctx->adapter == nullptr) {
+        GGML_LOG_ERROR("ggml_webgpu: no WebGPU adapter available\n");
+        return false;
+    }
 
     ctx->webgpu_global_ctx->adapter.GetLimits(&ctx->webgpu_global_ctx->capabilities.limits);
 
@@ -4507,6 +4512,7 @@ static void create_webgpu_device(ggml_backend_webgpu_reg_context * ctx) {
         "device_desc: %s\n",
         info.vendorID, std::string(info.vendor).c_str(), std::string(info.architecture).c_str(), info.deviceID,
         std::string(info.device).c_str(), std::string(info.description).c_str());
+    return true;
 }
 
 static webgpu_context initialize_webgpu_context(ggml_backend_dev_t dev) {
