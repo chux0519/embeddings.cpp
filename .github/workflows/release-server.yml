@@ -78,6 +78,25 @@ jobs:
           echo "$got"
           [ "$got" = "embeddings_server ${{ steps.version.outputs.version }}" ]
 
+      - uses: actions/cache@v4
+        with:
+          path: smoke-model
+          key: bge-m3.q4_k_mlp_emb_q8_attn
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          model=smoke-model/bge-m3.q4_k_mlp_emb_q8_attn.gguf
+          [ -f "$model" ] || curl -fsSL --create-dirs -o "$model" \
+            https://huggingface.co/chux0519/bge-m3-gguf-embeddings-cpp/resolve/main/bge-m3.q4_k_mlp_emb_q8_attn.gguf
+          "$(ls dist/embeddings_server-*)" --model "$model" --port 18090 --max-tokens 512 > server.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 120); do curl -sf http://127.0.0.1:18090/health > /dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:18090/v1/embeddings -H "Content-Type: application/json" \
+            -d '{"input":["slow login after the auth change"]}' -o resp.json || { cat server.log; exit 1; }
+          "$(command -v python3 || command -v python)" -c 'import json; d = json.load(open("resp.json"))["data"][0]["embedding"]; print(len(d), d[:3]); assert len(d) == 1024'
+          kill $pid
+
       - uses: actions/upload-artifact@v4
         with:
           name: server-${{ matrix.os }}-${{ matrix.arch }}
