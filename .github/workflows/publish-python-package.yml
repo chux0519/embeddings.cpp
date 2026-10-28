@@ -2,6 +2,12 @@ name: Publish Python Package
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.1.3) when re-running a tag's release from a branch"
+        required: false
+        default: ""
+        type: string
   push:
     tags:
       - "v*"
@@ -23,6 +29,9 @@ jobs:
           python-version: "3.12"
 
       - name: Prepare release version
+        shell: bash
+        env:
+          EMBEDDINGS_CPP_VERSION: ${{ inputs.version }}
         run: |
           version="$(python scripts/resolve_version.py)"
           python scripts/set_version.py "$version"
@@ -81,6 +90,9 @@ jobs:
           python-version: "3.12"
 
       - name: Prepare release version
+        shell: bash
+        env:
+          EMBEDDINGS_CPP_VERSION: ${{ inputs.version }}
         run: |
           version="$(python scripts/resolve_version.py)"
           python scripts/set_version.py "$version"
